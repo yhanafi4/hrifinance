@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRI Finance - Multi Workspace</title>
+    
+    <!-- Memuat Tailwind CSS untuk Desain -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Memuat FontAwesome untuk Ikon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Memuat React & ReactDOM dari CDNJS (Lebih Stabil & Cepat) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Memuat Babel dari CDNJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.1/babel.min.js"></script>
+
+    <!-- Memuat SheetJS untuk Export/Import Excel (XLSX) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        body { background-color: #f9fafb; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .chat-slide-up { animation: slideUp 0.3s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <!-- Indikator Loading awal sebelum React aktif -->
+        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: #4B5563;">
+            <div style="text-align: center;">
+                <h2 style="margin-bottom: 10px; font-weight: bold;">Memuat Aplikasi HRI Finance...</h2>
+                <p style="font-size: 14px; color: #6B7280;">Mohon tunggu, memastikan koneksi stabil.</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useRef, Fragment } = React;
+
+        // ============================================================================
+        // 0. SISTEM PELINDUNG ERROR (ERROR BOUNDARY)
+        // ============================================================================
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+            static getDerivedStateFromError(error) { return { hasError: true }; }
+            componentDidCatch(error, errorInfo) {
+                console.error("Sistem Mencegah Crash Layar Blank:", error, errorInfo);
+                this.setState({ error, errorInfo });
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-gray-800">
+                            <div className="bg-white p-8 rounded-xl shadow-xl max-w-2xl w-full border-t-4 border-red-500">
+                                <div className="flex items-center space-x-3 text-red-600 mb-4">
+                                    <i className="fas fa-exclamation-triangle text-3xl"></i>
+                                    <h1 className="text-2xl font-bold">Terjadi Kendala Sistem</h1>
+                                </div>
+                                <p className="mb-6 text-gray-600">Aplikasi dicegah menjadi "Layar Blank". Kami menemukan kesalahan pada sistem atau data lokal. Silakan muat ulang halaman atau hapus cache browser jika masalah berlanjut.</p>
+                                <button onClick={() => window.location.reload()} className="px-5 py-2.5 bg-red-600 text-white font-bold rounded-lg shadow hover:bg-red-700 transition">
+                                    <i className="fas fa-sync-alt mr-2"></i> Muat Ulang Halaman
+                                </button>
+                                <details className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <summary className="font-semibold cursor-pointer text-sm text-gray-700">Lihat Detail Kode Error (Untuk Tim IT)</summary>
+                                    <pre className="mt-3 text-[11px] overflow-auto text-red-700 whitespace-pre-wrap">{this.state.error && this.state.error.toString()}</pre>
+                                    <pre className="mt-2 text-[10px] overflow-auto text-gray-500 whitespace-pre-wrap">{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+                                </details>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // ============================================================================
+        // 1. PENGATURAN API GEMINI AI
+        // ============================================================================
+        // PENTING: Biarkan kosong "" jika dijalankan dari web preview sini.
+        // Jika Anda simpan ke laptop (dijalankan tanpa internet / local server pribadi), isi dengan API Key Anda sendiri!
+        const apiKey = ""; 
+
+        const callGemini = async (prompt) => {
+            // PERBAIKAN: Menggunakan endpoint gemini-2.5-flash-preview agar tidak error 404
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: "Anda adalah asisten keuangan profesional perusahaan bernama HRI Finance. Jawablah selalu dalam Bahasa Indonesia yang formal, profesional, ringkas, dan sopan." }] }
+            };
+            
+            let retries = 0;
+            const maxRetries = 5;
+            const delays = [1000, 2000, 4000, 8000, 16000];
+
+            while (retries <= maxRetries) {
+                try {
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, AI tidak dapat menghasilkan teks saat ini.";
+                } catch (error) {
+                    if (retries === maxRetries) return `Gagal terhubung ke AI. Pastikan internet Anda aktif dan API Key valid terisi jika di lokal. Error: ${error.message}`;
+                    await new Promise(res => setTimeout(res, delays[retries]));
+                    retries++;
+                }
+            }
+        };
+
+        // ============================================================================
+        // 2. SISTEM DATABASE BROWSER OFFLINE DINAMIS (INDEXED DB)
+        // ============================================================================
+        let currentDbPromise = null;
+        let dbListeners = { customers: [], jobcodes: [], progresses: [], invoices: [], bank_accounts: [] };
+
+        const initDB = (dbName) => {
+            dbListeners = { customers: [], jobcodes: [], progresses: [], invoices: [], bank_accounts: [] };
+            currentDbPromise = new Promise((resolve) => {
+                const req = indexedDB.open(`HRI_DB_${dbName}`, 3); 
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    ['customers', 'jobcodes', 'progresses', 'invoices', 'bank_accounts'].forEach(store => {
+                        if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' });
+                    });
+                };
+                req.onsuccess = () => resolve(req.result);
+            });
+            return currentDbPromise;
+        };
+
+        const notifyDb = async (storeName) => {
+            if (!currentDbPromise) return;
+            const db = await currentDbPromise;
+            const tx = db.transaction(storeName, 'readonly');
+            const req = tx.objectStore(storeName).getAll();
+            req.onsuccess = () => {
+                let data = req.result;
+                if (storeName === 'progresses') {
+                    data.sort((a, b) => {
+                        const idxA = a.sortIndex !== undefined ? a.sortIndex : new Date(a.createdAt||0).getTime() / 1000000;
+                        const idxB = b.sortIndex !== undefined ? b.sortIndex : new Date(b.createdAt||0).getTime() / 1000000;
+                        return idxA - idxB;
+                    });
+                } else {
+                    data.sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0)); 
+                }
+                if (dbListeners[storeName]) {
+                    dbListeners[storeName].forEach(cb => cb(data));
+                }
+            };
+        };
+
+        const onSnapshotData = (storeName, callback) => {
+            if (!dbListeners[storeName]) dbListeners[storeName] = [];
+            dbListeners[storeName].push(callback);
+            notifyDb(storeName);
+            return () => { if(dbListeners[storeName]) dbListeners[storeName] = dbListeners[storeName].filter(cb => cb !== callback); };
+        };
+
+        const addData = async (storeName, data) => {
+            const db = await currentDbPromise;
+            const generatedId = Date.now().toString() + Math.floor(Math.random()*1000);
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                tx.objectStore(storeName).add({ ...data, id: generatedId });
+                tx.oncomplete = () => { notifyDb(storeName); resolve(generatedId); };
+                tx.onerror = (e) => reject(e);
+            });
+        };
+
+        const updateData = async (storeName, id, data) => {
+            const db = await currentDbPromise;
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                const store = tx.objectStore(storeName);
+                const req = store.get(id);
+                req.onsuccess = () => { store.put({ ...req.result, ...data, id: id }); };
+                tx.oncomplete = () => { notifyDb(storeName); resolve(); };
+                tx.onerror = (e) => reject(e);
+            });
+        };
+
+        const deleteData = async (storeName, id) => {
+            const db = await currentDbPromise;
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                tx.objectStore(storeName).delete(id);
+                tx.oncomplete = () => { notifyDb(storeName); resolve(); };
+                tx.onerror = (e) => reject(e);
+            });
+        };
+
+        const deleteMultipleData = async (storeName, ids) => {
+            const db = await currentDbPromise;
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                const store = tx.objectStore(storeName);
+                ids.forEach(id => store.delete(id));
+                tx.oncomplete = () => { notifyDb(storeName); resolve(); };
+                tx.onerror = (e) => reject(e);
+            });
+        };
+
+        // ============================================================================
+        // 3. KOMPONEN ICON & UTILS
+        // ============================================================================
+        const Icon = ({ name, size = 18, className = "" }) => {
+            const map = {
+                LayoutDashboard: 'fas fa-tachometer-alt', FileText: 'fas fa-file-alt', Receipt: 'fas fa-file-invoice-dollar', Settings: 'fas fa-cog',
+                Briefcase: 'fas fa-briefcase', Plus: 'fas fa-plus', Save: 'fas fa-save', X: 'fas fa-times', DollarSign: 'fas fa-dollar-sign', 
+                TrendingUp: 'fas fa-chart-line', AlertCircle: 'fas fa-exclamation-circle', Sparkles: 'fas fa-magic', Bot: 'fas fa-robot', 
+                Copy: 'fas fa-copy', CheckCircle2: 'fas fa-check-circle', CreditCard: 'fas fa-credit-card', Edit: 'fas fa-edit', Trash2: 'fas fa-trash-alt',
+                Ban: 'fas fa-ban', Database: 'fas fa-database', Calculator: 'fas fa-calculator', CalendarDays: 'fas fa-calendar-alt', 
+                ChevronDown: 'fas fa-chevron-down', ChevronUp: 'fas fa-chevron-up', Download: 'fas fa-download', UploadCloud: 'fas fa-cloud-upload-alt',
+                Menu: 'fas fa-bars', WifiOff: 'fas fa-wifi-slash', Wifi: 'fas fa-wifi', InfoCircle: 'fas fa-info-circle', Search: 'fas fa-search', 
+                Calendar: 'fas fa-calendar', MessageCircle: 'fas fa-comment-dots', Paperclip: 'fas fa-paperclip', Send: 'fas fa-paper-plane', 
+                Landmark: 'fas fa-university', Lock: 'fas fa-lock', Unlock: 'fas fa-unlock', ArrowUp: 'fas fa-arrow-up', ArrowDown: 'fas fa-arrow-down',
+                Table: 'fas fa-table', Users: 'fas fa-users', Building: 'fas fa-building', LogOut: 'fas fa-sign-out-alt', ArrowRight: 'fas fa-arrow-right',
+                Sync: 'fas fa-sync-alt'
+            };
+            return <i className={`${map[name] || 'fas fa-circle'} ${className}`} style={{ fontSize: size }}></i>;
+        };
+
+        const formatIDR = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value || 0);
+        const formatRibuan = (number) => (number === null || number === undefined || isNaN(number)) ? '' : number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        const parseRibuan = (text) => text ? parseInt(text.toString().replace(/\./g, ''), 10) || 0 : 0;
+        const formatDate = (dateString) => {
+            if (!dateString || dateString === '-') return '-';
+            const d = new Date(dateString); return isNaN(d.getTime()) ? '-' : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        };
+        // PERBAIKAN: Fungsi untuk menyingkat nominal rupiah pada Grafik
+        const formatShortIDR = (value) => {
+            if (value >= 1e12) return 'Rp ' + (value / 1e12).toFixed(1).replace('.', ',') + ' T';
+            if (value >= 1e9) return 'Rp ' + (value / 1e9).toFixed(1).replace('.', ',') + ' M';
+            if (value >= 1e6) return 'Rp ' + (value / 1e6).toFixed(1).replace('.', ',') + ' Jt';
+            if (value === 0) return '0';
+            return formatIDR(value);
+        };
+
+        const downloadTemplateExcel = (type) => {
+            let data = []; let filename = "";
+            if (type === 'pelanggan') { data = [{ "Nama Pelanggan": "Contoh PT Sejahtera", "Termin Pembayaran (Hari)": 30 }]; filename = "Template_Pelanggan.xlsx"; }
+            else if (type === 'jobcode') { data = [{ "Jobcode": "HRI-SBY", "Nama Pekerjaan": "Hauling Area Sebakis", "Jenis Pekerjaan": "HAULING", "Lokasi Pekerjaan": "Sebakis Area", "Nama Pelanggan": "Contoh PT Sejahtera" }]; filename = "Template_Jobcode.xlsx"; }
+            else if (type === 'progress') { data = [{ "Periode": "Januari 2026", "Nama Pekerjaan": "Hauling Area Sebakis", "Nilai Pengakuan (Rp)": 50000000 }, { "Periode": "Januari 2026", "Nama Pekerjaan": "Rental Alat Berat", "Nilai Pengakuan (Rp)": 25000000 }]; filename = "Template_Progress.xlsx"; }
+            else if (type === 'invoice') { data = [{ "No. Invoice": "INV-001", "No. Faktur Pajak": "010.000-26", "Pembetulan Ke-": 0, "Tgl. Terbit (YYYY-MM-DD)": "2026-01-01", "Tgl. Penyerahan (YYYY-MM-DD)": "2026-01-05", "Nama Pelanggan": "Contoh PT", "Nama Pekerjaan (Lookup Master)": "Hauling Area Sebakis", "Periode Progress": "Januari 2026", "Keterangan": "Pekerjaan Hauling", "Harga Jual": 10000000, "Pengurang Sebelum PPN": 0, "Tarif PPN (0.11/0.12)": 0.11, "Pengurang Setelah PPN": 0, "Dana Masuk (Rp)": 5000000, "Tgl Pembayaran (YYYY-MM-DD)": "2026-02-01", "Nama Bank": "BCA", "Rekening Bank": "1234567890", "Potongan/Backcharge (Rp)": 15000 }]; filename = "Template_Invoice.xlsx"; }
+            
+            if(typeof XLSX !== 'undefined') {
+                const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, filename);
+            } else {
+                alert("Library Excel belum termuat sempurna. Coba lagi.");
+            }
+        };
+
+        // ============================================================================
+        // 4. APLIKASI UTAMA (MAIN APP)
+        // ============================================================================
+        function MainApp({ profile, onLogout }) {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+            const [isDbConnected, setIsDbConnected] = useState(false);
+            const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+            
+            const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+            
+            const [showProgressDetails, setShowProgressDetails] = useState(false);
+            const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
+            const [showDanaMasukDetails, setShowDanaMasukDetails] = useState(false);
+            const [showPiutangDetails, setShowPiutangDetails] = useState(false);
+            const [selectedCustomerPiutang, setSelectedCustomerPiutang] = useState(null);
+
+            const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+            const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+            const [isSettingModalOpen, setIsSettingModalOpen] = useState(false);
+            const [isJobcodeModalOpen, setIsJobcodeModalOpen] = useState(false);
+            const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+            const [isBankAccountModalOpen, setIsBankAccountModalOpen] = useState(false);
+            const [invoiceError, setInvoiceError] = useState('');
+            const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+
+            const [aiInsight, setAiInsight] = useState('');
+            const [isAiLoading, setIsAiLoading] = useState(false);
+            const [emailModal, setEmailModal] = useState({ isOpen: false, data: null, draft: '', isLoading: false, isCopied: false });
+            const [customerInsightModal, setCustomerInsightModal] = useState({ isOpen: false, customerName: '', insight: '', isLoading: false });
+            const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
+            
+            const [isMagicModalOpen, setIsMagicModalOpen] = useState(false);
+            const [magicText, setMagicText] = useState('');
+            const [isMagicLoading, setIsMagicLoading] = useState(false);
+            
+            const [isChatOpen, setIsChatOpen] = useState(false);
+            const [chatHistory, setChatHistory] = useState([{ role: 'ai', text: `Halo! Saya asisten AI. Ada yang bisa saya bantu terkait laporan ruang kerja ${profile?.name || 'Anda'} hari ini?` }]);
+            const [chatInput, setChatInput] = useState('');
+            const [isChatLoading, setIsChatLoading] = useState(false);
+            const chatEndRef = useRef(null);
+
+            const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+            const [isLoadingImport, setIsLoadingImport] = useState(false);
+
+            const [searchTermInvoice, setSearchTermInvoice] = useState('');
+            const [searchTermProgress, setSearchTermProgress] = useState('');
+            const [searchTermCustomer, setSearchTermCustomer] = useState('');
+            const [searchTermJobcode, setSearchTermJobcode] = useState('');
+            const [searchTermBankAccount, setSearchTermBankAccount] = useState('');
+            const [selectedInvoices, setSelectedInvoices] = useState([]);
+
+            const showToast = (message, type = 'success') => { setToast({ show: true, message, type }); setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000); };
+
+            const [customers, setCustomers] = useState([]);
+            const [progresses, setProgresses] = useState([]);
+            const [invoices, setInvoices] = useState([]);
+            const [jobcodes, setJobcodes] = useState([]);
+            const [bankAccounts, setBankAccounts] = useState([]);
+
+            const initialInvoiceForm = { id: null, noInvoice: '', noFakturPajak: '', pembetulanFaktur: '', date: new Date().toISOString().split('T')[0], tglPenyerahan: new Date().toISOString().split('T')[0], customerName: '', desc: '', type: 'FULL PAKET', ppnRate: 0.11, jobcode: '', namaPekerjaanLookup: '', periodeProgress: '', hargaJual: 0, pengurangSblm: 0, pengurangStlh: 0, ppn: 0, pph23: 0, danaMasuk: 0, backcharge: 0, namaBank: '', rekeningBank: '' };
+            const [invoiceForm, setInvoiceForm] = useState(initialInvoiceForm);
+            
+            const initialProgressForm = { id: null, period: '', items: [{ project: '', jobcode: '', amount: 0 }] };
+            const [progressForm, setProgressForm] = useState(initialProgressForm);
+            
+            const initialSettingForm = { id: null, name: '', term: 30 };
+            const [settingForm, setSettingForm] = useState(initialSettingForm);
+            
+            const initialJobcodeForm = { id: null, jobcode: '', namaPekerjaan: '', type: 'FULL PAKET', lokasi: '', customerName: '' };
+            const [jobcodeForm, setJobcodeForm] = useState(initialJobcodeForm);
+            
+            const initialBankAccountForm = { id: null, namaBank: '', noRekening: '', atasNama: '' };
+            const [bankAccountForm, setBankAccountForm] = useState(initialBankAccountForm);
+
+            const [paymentForm, setPaymentForm] = useState({ id: null, noInvoice: '', totalSetelahPph: 0, danaMasukBaru: 0, backchargeBaru: 0, tglPembayaranBaru: new Date().toISOString().split('T')[0], namaBankBaru: '', rekeningBankBaru: '', history: [] });
+
+            const fileInputPelanggan = useRef(null); const fileInputJobcode = useRef(null); const fileInputInvoice = useRef(null); const fileInputProgress = useRef(null);
+
+            const currentYearCalc = new Date().getFullYear();
+            const availableYears = []; for (let y = 2024; y <= Math.max(2025, currentYearCalc + 1); y++) availableYears.push(y);
+
+            useEffect(() => {
+                const handleOnline = () => setIsOnline(true); const handleOffline = () => setIsOnline(false);
+                window.addEventListener('online', handleOnline); window.addEventListener('offline', handleOffline);
+                return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
+            }, []);
+
+            // LISTENERS DATABASE BERDASARKAN PROFIL
+            useEffect(() => {
+                const unsubC = onSnapshotData('customers', setCustomers);
+                const unsubJ = onSnapshotData('jobcodes', setJobcodes);
+                const unsubP = onSnapshotData('progresses', setProgresses);
+                const unsubB = onSnapshotData('bank_accounts', setBankAccounts);
+                const unsubI = onSnapshotData('invoices', (data) => { setInvoices(data); setIsDbConnected(true); });
+                return () => { unsubC(); unsubJ(); unsubP(); unsubB(); unsubI(); };
+            }, []);
+
+            useEffect(() => { if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory, isChatOpen]);
+            useEffect(() => { if (customers.length > 0 && !invoiceForm.customerName && !invoiceForm.id && !invoiceForm.jobcode) setInvoiceForm(prev => ({ ...prev, customerName: customers[0].name })); }, [customers, invoiceForm.id, invoiceForm.jobcode]);
+
+            const calculateInvoiceFields = (inv, customerList) => {
+                const cust = customerList.find(c => c.name === inv.customerName); const term = cust ? (parseInt(cust.term, 10) || 0) : 0;
+                let tglJatuhTempo = '-';
+                if (inv.tglPenyerahan || inv.date) { const d = new Date(inv.tglPenyerahan || inv.date); if (!isNaN(d.getTime())) { d.setDate(d.getDate() + term); tglJatuhTempo = d.toISOString().split('T')[0]; } }
+                const dpp = Number(inv.hargaJual) || 0; const minSblm = Number(inv.pengurangSblm) || 0; const pajak = Number(inv.ppn) || 0; const minStlh = Number(inv.pengurangStlh) || 0; const pph = Number(inv.pph23) || 0; const masuk = Number(inv.danaMasuk) || 0; const charge = Number(inv.backcharge) || 0;
+                const totalTagihan = dpp - minSblm + pajak - minStlh; const totalSetelahPph = totalTagihan - pph; const sisaPiutang = totalSetelahPph - masuk - charge;
+                let statusPembayaran = inv.isCancelled ? 'BATAL' : (sisaPiutang <= 0 && dpp > 0 ? 'PAID' : 'OUTSTANDING');
+                return { ...inv, tglJatuhTempo, totalTagihan, totalSetelahPph, sisaPiutang, statusPembayaran };
+            };
+
+            const processedInvoices = useMemo(() => invoices.map(inv => calculateInvoiceFields(inv, customers)), [invoices, customers]);
+
+            const dashboardStats = useMemo(() => {
+                let totalPiutang = 0, totalDanaMasuk = 0, totalTagihanTerbit = 0, outstandingCount = 0; 
+                const detailInvoices = { hariIni: { dpp: 0, pSblm: 0, ppn: 0, pStlh: 0, total: 0 }, bulanBerjalan: { dpp: 0, pSblm: 0, ppn: 0, pStlh: 0, total: 0 }, bulanLalu: { dpp: 0, pSblm: 0, ppn: 0, pStlh: 0, total: 0 }, tahunBerjalan: { dpp: 0, pSblm: 0, ppn: 0, pStlh: 0, total: 0 } };
+                const detailDanaMasuk = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].map(m => ({ name: m, w1: 0, w2: 0, w3: 0, w4: 0, w5: 0, total: 0 }));
+                const detailPiutang = {}; 
+                const detailProgress = {}; 
+                const chartData = detailDanaMasuk.map(m => ({ name: m.name.substring(0, 3), fullMonth: m.name, progress: 0, invoice: 0 }));
+                let maxChartValue = 0; 
+                
+                const now = new Date(); const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                const currM = now.getMonth(), currY = now.getFullYear(); const lastMDate = new Date(currY, currM - 1, 1);
+                
+                const getExcelWeekNum = (d, type) => { const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const startOfYear = new Date(Date.UTC(date.getUTCFullYear(), 0, 1)); const startDay = startOfYear.getUTCDay(); const weekStartOffset = type === 2 ? 1 : 0; const adjustedStartDay = (startDay - weekStartOffset + 7) % 7; const daysInFirstWeek = 7 - adjustedStartDay; const dayOfYear = Math.floor((date - startOfYear) / 86400000) + 1; if (dayOfYear <= daysInFirstWeek) return 1; return Math.ceil((dayOfYear - daysInFirstWeek) / 7) + 1; };
+
+                // 1. PETAKAN SEMUA PROGRESS
+                progresses.forEach(p => {
+                    const period = String(p.period || 'Tanpa Periode').trim();
+                    
+                    if (!detailProgress[period]) detailProgress[period] = { diakui: 0, ditagih: 0, sisa: 0, sortIndex: p.sortIndex !== undefined ? p.sortIndex : 999999 };
+                    else detailProgress[period].sortIndex = Math.min(detailProgress[period].sortIndex, p.sortIndex !== undefined ? p.sortIndex : 999999);
+                    
+                    const amt = p.items && Array.isArray(p.items) ? p.items.reduce((s, it) => s + (Number(it.amount) || 0), 0) : (Number(p.amount) || 0);
+                    
+                    detailProgress[period].diakui += amt; 
+                    detailProgress[period].sisa += amt; 
+                    
+                    const matchYear = /\d{4}/.test(period) ? period.toLowerCase().includes(selectedYear.toString()) : selectedYear === currY;
+                    if (matchYear) chartData.forEach((cd, idx) => { if (period.toLowerCase().includes(['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'][idx])) cd.progress += amt; });
+                });
+
+                // 2. PETAKAN INVOICE
+                processedInvoices.forEach(inv => {
+                    if (inv.statusPembayaran !== 'BATAL') {
+                        totalTagihanTerbit += inv.totalTagihan; 
+                        const dpp = Number(inv.hargaJual) || 0; 
+                        
+                        const invPeriod = String(inv.periodeProgress || '').trim();
+                        if (invPeriod) {
+                            if (!detailProgress[invPeriod]) detailProgress[invPeriod] = { diakui: 0, ditagih: 0, sisa: 0, sortIndex: 999999 };
+                            detailProgress[invPeriod].ditagih += dpp; 
+                            detailProgress[invPeriod].sisa -= dpp; 
+                        }
+
+                        if (inv.statusPembayaran === 'OUTSTANDING') {
+                            totalPiutang += inv.sisaPiutang; outstandingCount++;
+                            const cName = inv.customerName || 'Tanpa Pelanggan';
+                            if (!detailPiutang[cName]) detailPiutang[cName] = { totalSisa: 0, invoices: [] };
+                            detailPiutang[cName].totalSisa += inv.sisaPiutang; detailPiutang[cName].invoices.push(inv);
+                        }
+                        
+                        if (inv.date) {
+                            const d = new Date(inv.date); if (!isNaN(d.getTime())) {
+                                const add = t => { t.dpp += dpp; t.pSblm += (Number(inv.pengurangSblm)||0); t.ppn += (Number(inv.ppn)||0); t.pStlh += (Number(inv.pengurangStlh)||0); t.total += inv.totalTagihan; };
+                                if (inv.date === todayStr) add(detailInvoices.hariIni); 
+                                if (d.getMonth() === currM && d.getFullYear() === currY) add(detailInvoices.bulanBerjalan);
+                                if (d.getMonth() === lastMDate.getMonth() && d.getFullYear() === lastMDate.getFullYear()) add(detailInvoices.bulanLalu); 
+                                if (d.getFullYear() === selectedYear) add(detailInvoices.tahunBerjalan);
+                                if (d.getFullYear() === selectedYear) chartData[d.getMonth()].invoice += dpp;
+                            }
+                        }
+                        
+                        const processPay = (dm, dateStr) => { if(dm > 0 && dateStr) { const d = new Date(dateStr); if(!isNaN(d.getTime()) && d.getFullYear() === selectedYear) { totalDanaMasuk += dm; let w = getExcelWeekNum(d, 2) - getExcelWeekNum(new Date(d.getFullYear(), d.getMonth(), 1), 1) + 1; if(w<1) w=1; if(w>5) w=5; detailDanaMasuk[d.getMonth()][`w${w}`] += dm; detailDanaMasuk[d.getMonth()].total += dm; } } };
+                        if (inv.paymentHistory && Array.isArray(inv.paymentHistory)) inv.paymentHistory.forEach(p => processPay(Number(p.danaMasuk)||0, p.tglPembayaran)); else processPay(Number(inv.danaMasuk)||0, inv.tglPembayaran);
+                    }
+                });
+                
+                let totalProgressUnbilledCalculated = 0;
+                const detailProgressArray = Object.keys(detailProgress).map(k => {
+                    totalProgressUnbilledCalculated += detailProgress[k].sisa;
+                    return { period: k, ...detailProgress[k] };
+                }).sort((a,b) => a.sortIndex - b.sortIndex);
+
+                chartData.forEach(d => { maxChartValue = Math.max(maxChartValue, d.progress, d.invoice); });
+                
+                return { 
+                    totalPiutang, totalDanaMasuk, totalTagihanTerbit, outstandingCount, 
+                    totalProgressUnbilled: totalProgressUnbilledCalculated, 
+                    detailInvoices, detailDanaMasuk, detailProgressArray, 
+                    detailPiutangArray: Object.keys(detailPiutang).map(k => ({ customerName: k, ...detailPiutang[k] })).sort((a,b) => b.totalSisa - a.totalSisa), 
+                    chartData, maxChartValue 
+                };
+            }, [processedInvoices, progresses, selectedYear]);
+
+            const handleInvoiceFormChange = (e) => {
+                const { name, value } = e.target;
+                setInvoiceForm(prev => {
+                    const next = { ...prev, [name]: value };
+                    
+                    if (name === 'namaPekerjaanLookup') { 
+                        const job = jobcodes.find(j => j.namaPekerjaan === value); 
+                        if (job) { 
+                            next.type = job.type; 
+                            next.jobcode = job.jobcode; 
+                            if (job.jobcode !== 'HRI-PKU-Support' && job.customerName) {
+                                next.customerName = job.customerName; 
+                            }
+                        } else {
+                            next.jobcode = ''; 
+                        }
+                    }
+
+                    if (['hargaJual', 'pengurangSblm', 'type', 'ppnRate', 'namaPekerjaanLookup'].includes(name)) {
+                        const dpp = Number(next.hargaJual) || 0; 
+                        const pSblm = Number(next.pengurangSblm) || 0;
+                        const currentType = (next.type || '').toUpperCase();
+                        next.ppnRate = currentType === 'PENJUALAN ASSET' ? (Number(next.ppnRate) || 0.11) : 0.11; 
+                        next.ppn = Math.round((dpp - pSblm) * next.ppnRate);
+                        next.pph23 = (currentType === 'PENJUALAN ASSET' || currentType === 'SPAREPART') ? 0 : Math.round(dpp * 0.02);
+                    }
+                    return next;
+                }); 
+                setInvoiceError('');
+            };
+
+            const handleNumberInput = (e, f) => { handleInvoiceFormChange({ target: { name: f, value: parseRibuan(e.target.value) } }); };
+
+            const handleSaveInvoice = async (e) => {
+                e.preventDefault(); setInvoiceError('');
+                const cancelEx = invoices.some(i => i.noInvoice === invoiceForm.noInvoice && i.isCancelled && i.id !== invoiceForm.id); if (cancelEx) return setInvoiceError('Gagal: Nomor Invoice ini sudah dibatalkan sebelumnya.');
+                const activeEx = invoices.filter(i => i.noInvoice === invoiceForm.noInvoice && !i.isCancelled && i.id !== invoiceForm.id);
+                for (let ex of activeEx) { if (ex.customerName !== invoiceForm.customerName) return setInvoiceError('Gagal: Digunakan pelanggan lain.'); if (Number(ex.hargaJual) === Number(invoiceForm.hargaJual)) return setInvoiceError('Gagal: Duplikat invoice persis ada.'); }
+                
+                let finalData = { ...invoiceForm }; if (finalData.jobcode && finalData.jobcode !== 'HRI-PKU-Support') { const j = jobcodes.find(x => x.jobcode === finalData.jobcode); if (j && j.customerName) finalData.customerName = j.customerName; }
+                if (finalData.id) { await updateData('invoices', finalData.id, { ...finalData, updatedAt: new Date().toISOString() }); showToast('Diperbarui!'); } 
+                else { await addData('invoices', { ...finalData, paymentHistory: [], isCancelled: false, createdAt: new Date().toISOString() }); showToast('Disimpan!'); }
+                setInvoiceForm(initialInvoiceForm); setIsInvoiceModalOpen(false);
+            };
+
+            const openEditInvoice = (inv) => { setInvoiceForm({ ...initialInvoiceForm, ...inv }); setInvoiceError(''); setIsInvoiceModalOpen(true); };
+            const openEditPayment = (inv) => { let hist = inv.paymentHistory || []; if (hist.length === 0 && (inv.danaMasuk > 0 || inv.backcharge > 0)) hist = [{ id: 'leg-'+Date.now(), danaMasuk: inv.danaMasuk||0, backcharge: inv.backcharge||0, tglPembayaran: inv.tglPembayaran||'-', namaBank: inv.namaBank||'-', rekeningBank: inv.rekeningBank||'-' }]; setPaymentForm({ id: inv.id, noInvoice: inv.noInvoice, totalSetelahPph: inv.totalSetelahPph, danaMasukBaru: 0, backchargeBaru: 0, tglPembayaranBaru: new Date().toISOString().split('T')[0], namaBankBaru: '', rekeningBankBaru: '', history: hist }); setIsPaymentModalOpen(true); };
+
+            const handleSavePayment = async (e) => {
+                e.preventDefault(); let hist = [...paymentForm.history];
+                if (paymentForm.danaMasukBaru > 0 || paymentForm.backchargeBaru > 0) hist.push({ id: Date.now().toString(), danaMasuk: Number(paymentForm.danaMasukBaru), backcharge: Number(paymentForm.backchargeBaru), tglPembayaran: paymentForm.tglPembayaranBaru, namaBank: paymentForm.namaBankBaru, rekeningBank: paymentForm.rekeningBankBaru });
+                const last = hist.length ? hist[hist.length - 1] : {};
+                await updateData('invoices', paymentForm.id, { paymentHistory: hist, danaMasuk: hist.reduce((s, p) => s + Number(p.danaMasuk), 0), backcharge: hist.reduce((s, p) => s + Number(p.backcharge), 0), tglPembayaran: last.tglPembayaran||'', namaBank: last.namaBank||'', rekeningBank: last.rekeningBank||'' });
+                showToast('Pembayaran update!'); setIsPaymentModalOpen(false);
+            };
+
+            const confirmCancelInvoice = (inv) => { setConfirmModal({ isOpen: true, title: 'Batalkan Invoice', message: 'Yakin batalkan dan nol-kan?', onConfirm: async () => { await updateData('invoices', inv.id, { isCancelled: true, hargaJual: 0, pengurangSblm: 0, pengurangStlh: 0, ppn: 0, pph23: 0, danaMasuk: 0, backcharge: 0, desc: 'BATAL - ' + (inv.desc||'') }); showToast('Dibatalkan.'); }}); };
+
+            const handleAddProgressItem = () => { setProgressForm(prev => ({ ...prev, items: [...prev.items, { project: '', jobcode: '', amount: 0 }] })); };
+            const handleRemoveProgressItem = (index) => { setProgressForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) })); };
+            const handleProgressItemChange = (index, field, value) => {
+                setProgressForm(prev => {
+                    const newItems = [...prev.items];
+                    newItems[index] = { ...newItems[index], [field]: value };
+                    if (field === 'project') {
+                        const selectedJob = jobcodes.find(j => j.namaPekerjaan === value);
+                        newItems[index].jobcode = selectedJob ? selectedJob.jobcode : '';
+                    }
+                    return { ...prev, items: newItems };
+                });
+            };
+
+            const handleMoveProgress = async (id, dir) => {
+                if (searchTermProgress) return showToast("Hapus pencarian dulu.", "error");
+                const idx = progresses.findIndex(p => p.id === id); if (idx === -1) return;
+                const getVal = (it, i) => it.sortIndex !== undefined ? it.sortIndex : i;
+                if (dir === 'up' && idx > 0) { let vA = getVal(progresses[idx], idx), vB = getVal(progresses[idx-1], idx-1); if (vA===vB) { vA=idx; vB=idx-1; } await updateData('progresses', progresses[idx].id, { sortIndex: vB }); await updateData('progresses', progresses[idx-1].id, { sortIndex: vA }); } 
+                else if (dir === 'down' && idx < progresses.length - 1) { let vA = getVal(progresses[idx], idx), vB = getVal(progresses[idx+1], idx+1); if (vA===vB) { vA=idx; vB=idx+1; } await updateData('progresses', progresses[idx].id, { sortIndex: vB }); await updateData('progresses', progresses[idx+1].id, { sortIndex: vA }); }
+            };
+
+            const handleSaveProgress = async (e) => {
+                e.preventDefault(); if(!progressForm.items.length || progressForm.items.some(i => !i.project || !i.amount)) return showToast('Lengkapi baris.', 'error');
+                let max = progresses.reduce((m, p) => Math.max(m, p.sortIndex || 0), 0);
+                if (progressForm.id) { await updateData('progresses', progressForm.id, { period: progressForm.period, items: progressForm.items, updatedAt: new Date().toISOString() }); showToast('Update!'); } 
+                else { await addData('progresses', { period: progressForm.period, items: progressForm.items, sortIndex: max + 1, createdAt: new Date().toISOString() }); showToast('Simpan!'); }
+                setProgressForm(initialProgressForm); setIsProgressModalOpen(false); 
+            };
+            const openEditProgress = (prog) => {
+                if (!prog.items || !Array.isArray(prog.items)) setProgressForm({ id: prog.id, period: prog.period, items: [{ project: prog.project||'', jobcode: prog.jobcode||'', amount: prog.amount||0 }] });
+                else setProgressForm(prog);
+                setIsProgressModalOpen(true);
+            };
+            const confirmDeleteProgress = (id) => { setConfirmModal({ isOpen: true, title: 'Hapus Progress', message: 'Data pengakuan progress ini akan dihapus permanen. Lanjutkan?', onConfirm: async () => { await deleteData('progresses', id); showToast('Data progress dihapus.'); }}); };
+
+            const handleSaveSetting = async (e) => { e.preventDefault(); if (settingForm.id) await updateData('customers', settingForm.id, { name: settingForm.name, term: Number(settingForm.term) }); else await addData('customers', { name: settingForm.name, term: Number(settingForm.term) }); setSettingForm(initialSettingForm); setIsSettingModalOpen(false); showToast('Tersimpan!'); };
+            const openEditSetting = (cust) => { setSettingForm(cust); setIsSettingModalOpen(true); };
+            const confirmDeleteSetting = (id, name) => { setConfirmModal({ isOpen: true, title: 'Hapus Pelanggan', message: `Data pelanggan ${name} akan dihapus. Lanjutkan?`, onConfirm: async () => { await deleteData('customers', id); showToast('Data pelanggan dihapus.'); }}); };
+
+            const handleSaveJobcode = async (e) => { e.preventDefault(); if (jobcodeForm.id) await updateData('jobcodes', jobcodeForm.id, { jobcode: jobcodeForm.jobcode, namaPekerjaan: jobcodeForm.namaPekerjaan, type: jobcodeForm.type, lokasi: jobcodeForm.lokasi, customerName: jobcodeForm.customerName }); else await addData('jobcodes', { jobcode: jobcodeForm.jobcode, namaPekerjaan: jobcodeForm.namaPekerjaan, type: jobcodeForm.type, lokasi: jobcodeForm.lokasi, customerName: jobcodeForm.customerName }); setJobcodeForm(initialJobcodeForm); setIsJobcodeModalOpen(false); showToast('Tersimpan!'); };
+            const openEditJobcode = (job) => { setJobcodeForm(job); setIsJobcodeModalOpen(true); };
+            const confirmDeleteJobcode = (id, name) => { setConfirmModal({ isOpen: true, title: 'Hapus Jobcode', message: `Data Jobcode ${name} akan dihapus. Lanjutkan?`, onConfirm: async () => { await deleteData('jobcodes', id); showToast('Data Jobcode dihapus.'); }}); };
+
+            const handleSaveBankAccount = async (e) => { e.preventDefault(); if (bankAccountForm.id) await updateData('bank_accounts', bankAccountForm.id, { namaBank: bankAccountForm.namaBank, noRekening: bankAccountForm.noRekening, atasNama: bankAccountForm.atasNama }); else await addData('bank_accounts', { namaBank: bankAccountForm.namaBank, noRekening: bankAccountForm.noRekening, atasNama: bankAccountForm.atasNama }); setBankAccountForm(initialBankAccountForm); setIsBankAccountModalOpen(false); showToast('Tersimpan!'); };
+            const openEditBankAccount = (bank) => { setBankAccountForm(bank); setIsBankAccountModalOpen(true); };
+            const confirmDeleteBankAccount = (id, name) => { setConfirmModal({ isOpen: true, title: 'Hapus Rekening', message: `Rekening ${name} akan dihapus. Lanjutkan?`, onConfirm: async () => { await deleteData('bank_accounts', id); showToast('Data Rekening dihapus.'); }}); };
+
+            const handleImportExcel = async (e, type) => {
+                const file = e.target.files[0]; if (!file) return; setIsLoadingImport(true);
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const data = new Uint8Array(event.target.result); const workbook = XLSX.read(data, { type: 'array' }); const worksheet = workbook.Sheets[workbook.SheetNames[0]]; const parsedData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                        if (!parsedData.length) { showToast("Excel kosong.", "error"); setIsLoadingImport(false); return; }
+                        let count = 0;
+                        if (type === 'progress') {
+                            const group = {};
+                            for (const row of parsedData) { if (row['Periode'] && row['Nama Pekerjaan']) { const per = String(row['Periode']); if (!group[per]) group[per] = []; const j = jobcodes.find(x => x.namaPekerjaan === row['Nama Pekerjaan']); group[per].push({ project: row['Nama Pekerjaan'], jobcode: j ? j.jobcode : '', amount: Number(row['Nilai Pengakuan (Rp)']) || 0 }); } }
+                            let max = progresses.length ? Math.max(...progresses.map(p => p.sortIndex || 0)) : 0;
+                            for (const [per, items] of Object.entries(group)) { max++; await addData('progresses', { period: per, items, sortIndex: max, createdAt: new Date().toISOString() }); count += items.length; }
+                        } else if (type === 'pelanggan') { for (const row of parsedData) { if (row['Nama Pelanggan']) { await addData('customers', { name: String(row['Nama Pelanggan']), term: parseInt(row['Termin Pembayaran (Hari)'], 10) || 0 }); count++; } } }
+                        else if (type === 'jobcode') { for (const row of parsedData) { if (row['Jobcode']) { await addData('jobcodes', { jobcode: String(row['Jobcode']), namaPekerjaan: String(row['Nama Pekerjaan']), type: row['Jenis Pekerjaan'] || 'FULL PAKET', lokasi: String(row['Lokasi Pekerjaan']), customerName: row['Nama Pelanggan'] ? String(row['Nama Pelanggan']) : '' }); count++; } } }
+                        else if (type === 'invoice') {
+                            let localInv = [...invoices];
+                            for (const row of parsedData) {
+                                if (row['No. Invoice']) {
+                                    const no = row['No. Invoice'].toString().trim(); const dpp = Number(row['Harga Jual']) || 0; const pSblm = Number(row['Pengurang Sebelum PPN']) || 0;
+                                    let jT = 'FULL PAKET', jC = '', cst = row['Nama Pelanggan'] ? String(row['Nama Pelanggan']) : ''; const jb = jobcodes.find(x => x.namaPekerjaan === row['Nama Pekerjaan (Lookup Master)']); if (jb) { jT = jb.type; jC = jb.jobcode; if(!cst && jb.jobcode !== 'HRI-PKU-Support') cst = jb.customerName || ''; }
+                                    const dm = Number(row['Dana Masuk (Rp)']) || 0; const bc = Number(row['Potongan/Backcharge (Rp)']) || 0; const hasP = dm > 0 || bc > 0;
+                                    const pEntry = hasP ? { id: Date.now().toString()+Math.random(), danaMasuk: dm, backcharge: bc, tglPembayaran: row['Tgl Pembayaran (YYYY-MM-DD)']||'', namaBank: row['Nama Bank']||'', rekeningBank: row['Rekening Bank']||'' } : null;
+                                    let exIdx = localInv.findIndex(i => i.noInvoice === no);
+                                    if (exIdx !== -1) {
+                                        if (hasP) {
+                                            let ex = localInv[exIdx]; let upH = [...(ex.paymentHistory || []), pEntry];
+                                            let upD = { paymentHistory: upH, danaMasuk: upH.reduce((s, h) => s + Number(h.danaMasuk), 0), backcharge: upH.reduce((s, h) => s + Number(h.backcharge), 0), tglPembayaran: pEntry.tglPembayaran || ex.tglPembayaran, namaBank: pEntry.namaBank || ex.namaBank, rekeningBank: pEntry.rekeningBank || ex.rekeningBank, updatedAt: new Date().toISOString() };
+                                            await updateData('invoices', ex.id, upD); localInv[exIdx] = { ...ex, ...upD }; count++;
+                                        }
+                                    } else {
+                                        let rP = Number(row['Tarif PPN (0.11/0.12)']) || 0.11; const sd = d => { const x = new Date(d); return (!d || isNaN(x.getTime())) ? new Date().toISOString().split('T')[0] : x.toISOString().split('T')[0]; };
+                                        const cType = (jT || '').toUpperCase(); if (cType === 'PENJUALAN ASSET') rP = Number(row['Tarif PPN (0.11/0.12)']) || 0.11;
+                                        const pphExcel = (cType === 'PENJUALAN ASSET' || cType === 'SPAREPART') ? 0 : Math.round(dpp * 0.02);
+
+                                        let nInv = { noInvoice: no, noFakturPajak: row['No. Faktur Pajak'] ? String(row['No. Faktur Pajak']) : '', pembetulanFaktur: row['Pembetulan Ke-'] ? String(row['Pembetulan Ke-']) : '0', date: sd(row['Tgl. Terbit (YYYY-MM-DD)']), tglPenyerahan: sd(row['Tgl. Penyerahan (YYYY-MM-DD)']), customerName: cst, namaPekerjaanLookup: row['Nama Pekerjaan (Lookup Master)'] ? String(row['Nama Pekerjaan (Lookup Master)']) : '', jobcode: jC, type: jT, periodeProgress: row['Periode Progress'] ? String(row['Periode Progress']) : '', desc: row['Keterangan'] ? String(row['Keterangan']) : '', hargaJual: dpp, pengurangSblm: pSblm, pengurangStlh: Number(row['Pengurang Setelah PPN']) || 0, ppnRate: rP, ppn: Math.round((dpp - pSblm) * rP), pph23: pphExcel, danaMasuk: hasP ? dm : 0, backcharge: hasP ? bc : 0, tglPembayaran: hasP ? pEntry.tglPembayaran : '', namaBank: hasP ? pEntry.namaBank : '', rekeningBank: hasP ? pEntry.rekeningBank : '', paymentHistory: hasP ? [pEntry] : [], isCancelled: false, createdAt: new Date().toISOString() };
+                                        const gid = await addData('invoices', nInv); localInv.push({ ...nInv, id: gid }); count++;
+                                    }
+                                }
+                            }
+                        }
+                        showToast(`Berhasil proses ${count} baris Excel!`);
+                    } catch (err) { console.error(err); showToast("Error baca Excel.", "error"); }
+                    setIsLoadingImport(false); if (e.target) e.target.value = null;
+                }; reader.readAsArrayBuffer(file);
+            };
+
+            const generateFinancialInsight = async () => { 
+                setIsAiLoading(true); setAiInsight(''); 
+                try {
+                    const p = `Buat analisis arus kas singkat: Progress Unbilled: ${formatIDR(dashboardStats.totalProgressUnbilled)}, Inv Terbit: ${formatIDR(dashboardStats.totalTagihanTerbit)}, Masuk: ${formatIDR(dashboardStats.totalDanaMasuk)}, Piutang: ${formatIDR(dashboardStats.totalPiutang)}.`; 
+                    const text = await callGemini(p); setAiInsight(text); 
+                } catch (e) { setAiInsight("Gagal menghubungi AI."); } finally { setIsAiLoading(false); }
+            };
+            
+            const openEmailDrafter = async (inv) => { 
+                setEmailModal({ isOpen: true, data: inv, draft: '', isLoading: true, isCopied: false }); 
+                try {
+                    const p = `Buat Draf Email Penagihan untuk ${inv.customerName}. Inv: ${inv.noInvoice}, Sisa: ${formatIDR(inv.sisaPiutang)}, Jatuh Tempo: ${formatDate(inv.tglJatuhTempo)}.`; 
+                    const d = await callGemini(p); setEmailModal(prev => ({ ...prev, draft: d, isLoading: false })); 
+                } catch (e) { setEmailModal(prev => ({ ...prev, draft: 'Gagal membuat draft', isLoading: false })); }
+            };
+            
+            const analyzeCustomerRisk = async (name, invs) => { 
+                setCustomerInsightModal({ isOpen: true, customerName: name, insight: '', isLoading: true }); 
+                try {
+                    const p = `Buat Profil Risiko Piutang untuk "${name}". Total: ${formatIDR(invs.reduce((s,i)=>s+i.sisaPiutang,0))}.`; 
+                    const r = await callGemini(p); setCustomerInsightModal({ isOpen: true, customerName: name, insight: r, isLoading: false }); 
+                } catch (e) { setCustomerInsightModal({ isOpen: true, customerName: name, insight: 'Gagal menganalisis.', isLoading: false }); }
+            };
+            
+            const generateInvoiceDesc = async () => { 
+                setIsGeneratingDesc(true); 
+                try {
+                    const prompt = `Buatkan deskripsi tagihan untuk ${invoiceForm.customerName||'Pelanggan'}, Pekerjaan: ${invoiceForm.namaPekerjaanLookup||'Umum'}, Tipe: ${invoiceForm.type}, Periode: ${invoiceForm.periodeProgress}. Tanpa tanda kutip.`; 
+                    const generatedDesc = await callGemini(prompt); setInvoiceForm(prev => ({ ...prev, desc: generatedDesc })); 
+                } catch (e) { console.error("AI Error:", e); } finally { setIsGeneratingDesc(false); }
+            };
+            
+            const handleMagicParse = async () => { 
+                setIsMagicLoading(true); 
+                try {
+                    const prompt = `Ekstrak JSON: "${magicText}"\nPelanggan: ${customers.map(c=>c.name).join(',')}\nPekerjaan: ${jobcodes.map(j=>j.namaPekerjaan).join(',')}\nFormat: {"customerName":"","namaPekerjaanLookup":"","hargaJual":0,"pengurangSblm":0,"desc":"","periodeProgress":""}`; 
+                    const res = await callGemini(prompt); const match = res.match(/\{[\s\S]*\}/); 
+                    if (!match) throw new Error("Format AI salah"); 
+                    
+                    const d = JSON.parse(match[0]); 
+                    setInvoiceForm(prev => { 
+                        const n = { ...prev, ...d }; 
+                        const j = jobcodes.find(x => x.namaPekerjaan === d.namaPekerjaanLookup); 
+                        if (j) { n.type = j.type; n.jobcode = j.jobcode; if (j.jobcode !== 'HRI-PKU-Support' && j.customerName) n.customerName = j.customerName; } 
+                        const dpp = Number(n.hargaJual)||0; const ps = Number(n.pengurangSblm)||0; const cType = (n.type || '').toUpperCase();
+                        let rPPN = cType === 'PENJUALAN ASSET' ? (Number(n.ppnRate)||0.11) : 0.11; 
+                        n.ppn = Math.round((dpp-ps)*rPPN); n.pph23 = (cType === 'PENJUALAN ASSET' || cType === 'SPAREPART') ? 0 : Math.round(dpp*0.02); 
+                        return n; 
+                    }); 
+                    setIsMagicModalOpen(false); setMagicText(''); setIsInvoiceModalOpen(true); showToast("✨ Ekstrak data berhasil!"); 
+                } catch (e) { showToast("Gagal ekstrak dengan AI.", "error"); } finally { setIsMagicLoading(false); }
+            };
+            
+            const handleSendChat = async () => { 
+                if (!chatInput.trim() || isChatLoading) return; 
+                const h = [...chatHistory, { role: 'user', text: chatInput }]; setChatHistory(h); setChatInput(''); setIsChatLoading(true); 
+                try {
+                    const p = `Konteks: Sisa Piutang ${formatIDR(dashboardStats.totalPiutang)}. User: ${chatInput}`; 
+                    const r = await callGemini(p); setChatHistory([...h, { role: 'ai', text: r }]); 
+                } catch (e) { setChatHistory([...h, { role: 'ai', text: 'Maaf, terjadi kesalahan.' }]); } finally { setIsChatLoading(false); }
+            };
+
+            const previewCustomer = customers.find(c => c.name === invoiceForm.customerName);
+            const previewTermin = previewCustomer ? (parseInt(previewCustomer.term, 10) || 0) : 0;
+            let previewJatuhTempoStr = '';
+            if (invoiceForm.tglPenyerahan) { const d = new Date(invoiceForm.tglPenyerahan); if (!isNaN(d.getTime())) { d.setDate(d.getDate() + previewTermin); if (!isNaN(d.getTime())) previewJatuhTempoStr = d.toISOString().split('T')[0]; } }
+            const previewTotalInvoice = (Number(invoiceForm.hargaJual) || 0) - (Number(invoiceForm.pengurangSblm) || 0) + (Number(invoiceForm.ppn) || 0) - (Number(invoiceForm.pengurangStlh) || 0);
+            
+            const uniqueProgressPeriods = Array.from(new Set(progresses.map(p => String(p.period||'').trim()))).filter(Boolean);
+            const isCustomerLocked = invoiceForm.jobcode !== '' && invoiceForm.jobcode !== 'HRI-PKU-Support';
+            const LoadingOverlay = () => isLoadingImport ? (<div className="fixed inset-0 bg-black/60 z-[100] flex flex-col items-center justify-center space-y-4"><div className="animate-spin rounded-full h-16 w-16 border-b-4 border-white"></div><p className="text-white font-bold tracking-wider">Memproses Excel...</p></div>) : null;
+
+            const invoiceCards = [
+                { title: "TOTAL INVOICE TERBIT HARI INI", data: dashboardStats.detailInvoices.hariIni },
+                { title: "TOTAL INVOICE TERBIT BULAN SEBELUMNYA", data: dashboardStats.detailInvoices.bulanLalu },
+                { title: "TOTAL INVOICE TERBIT BULAN BERJALAN", data: dashboardStats.detailInvoices.bulanBerjalan },
+                { title: `TOTAL INVOICE TERBIT TAHUN BERJALAN (${selectedYear})`, data: dashboardStats.detailInvoices.tahunBerjalan }
+            ];
+
+            const renderDashboard = () => {
+                // Kalkulasi Grand Total untuk Dana Masuk
+                const totalW1 = dashboardStats.detailDanaMasuk.reduce((s, i) => s + i.w1, 0);
+                const totalW2 = dashboardStats.detailDanaMasuk.reduce((s, i) => s + i.w2, 0);
+                const totalW3 = dashboardStats.detailDanaMasuk.reduce((s, i) => s + i.w3, 0);
+                const totalW4 = dashboardStats.detailDanaMasuk.reduce((s, i) => s + i.w4, 0);
+                const totalW5 = dashboardStats.detailDanaMasuk.reduce((s, i) => s + i.w5, 0);
+                const totalAll = dashboardStats.detailDanaMasuk.reduce((s, i) => s + i.total, 0);
+
+                return (
+                <div className="space-y-8 animate-fade-in pb-10">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
+                        <div className="flex items-center space-x-4">
+                            <h2 className="text-2xl font-bold text-gray-800">Dashboard {profile.name}</h2>
+                            <div className="flex items-center space-x-2 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm">
+                                <Icon name="Calendar" size={14} className="text-blue-600" />
+                                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="text-sm font-bold text-gray-700 focus:outline-none bg-transparent cursor-pointer">
+                                    {availableYears.map(y => <option key={y} value={y}>Tahun {y}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div onClick={() => setShowProgressDetails(!showProgressDetails)} className={`bg-white p-6 rounded-xl shadow-sm border ${showProgressDetails ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-100'} flex items-center space-x-4 cursor-pointer hover:shadow-md transition`}><div className="p-3 bg-blue-100 text-blue-600 rounded-lg"><Icon name="TrendingUp" size={24} /></div><div><p className="text-sm text-gray-500 font-medium">Progress Unbilled</p><p className="text-xl font-bold">{formatIDR(dashboardStats.totalProgressUnbilled)}</p></div></div>
+                        <div onClick={() => setShowInvoiceDetails(!showInvoiceDetails)} className={`bg-white p-6 rounded-xl shadow-sm border ${showInvoiceDetails ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-gray-100'} flex items-center space-x-4 cursor-pointer hover:shadow-md transition`}><div className="p-3 bg-indigo-100 text-indigo-600 rounded-lg"><Icon name="Receipt" size={24} /></div><div><p className="text-sm text-gray-500 font-medium">Tagihan Terbit</p><p className="text-xl font-bold">{formatIDR(dashboardStats.totalTagihanTerbit)}</p></div></div>
+                        <div onClick={() => setShowDanaMasukDetails(!showDanaMasukDetails)} className={`bg-white p-6 rounded-xl shadow-sm border ${showDanaMasukDetails ? 'border-green-400 ring-1 ring-green-400' : 'border-gray-100'} flex items-center space-x-4 cursor-pointer hover:shadow-md transition`}><div className="p-3 bg-green-100 text-green-600 rounded-lg"><Icon name="DollarSign" size={24} /></div><div><p className="text-sm text-gray-500 font-medium">Dana Masuk</p><p className="text-xl font-bold">{formatIDR(dashboardStats.totalDanaMasuk)}</p></div></div>
+                        <div onClick={() => setShowPiutangDetails(!showPiutangDetails)} className={`bg-white p-6 rounded-xl shadow-sm border ${showPiutangDetails ? 'border-red-400 ring-1 ring-red-400' : 'border-gray-100'} flex items-center space-x-4 cursor-pointer hover:shadow-md transition`}><div className="p-3 bg-red-100 text-red-600 rounded-lg"><Icon name="AlertCircle" size={24} /></div><div><p className="text-sm text-gray-500 font-medium">Sisa Piutang</p><p className="text-xl font-bold text-red-600">{formatIDR(dashboardStats.totalPiutang)}</p></div></div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-fade-in">
+                        <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-gray-800 flex items-center"><Icon name="TrendingUp" size={20} className="mr-2 text-blue-600"/> Grafik Progress vs Invoice ({selectedYear})</h3></div>
+                        
+                        {/* PERBAIKAN GRAFIK: Tambah label Sumbu Y (Rupiah) & presisi grid */}
+                        <div className="flex h-72">
+                            {/* Sumbu Y (Rupiah) */}
+                            <div className="w-16 flex flex-col justify-between items-end pr-3 text-[10px] text-gray-400 font-bold py-6">
+                                <span>{formatShortIDR(dashboardStats.maxChartValue)}</span>
+                                <span>{formatShortIDR(dashboardStats.maxChartValue * 0.75)}</span>
+                                <span>{formatShortIDR(dashboardStats.maxChartValue * 0.5)}</span>
+                                <span>{formatShortIDR(dashboardStats.maxChartValue * 0.25)}</span>
+                                <span>0</span>
+                            </div>
+                            
+                            {/* Area Grafik Bar */}
+                            <div className="flex-1 relative border-l border-b border-gray-200 mb-6 mt-6">
+                                {/* Garis Grid Latar Belakang */}
+                                <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                                    {[...Array(5)].map((_, i) => (<div key={i} className="w-full border-t border-gray-100"></div>))}
+                                </div>
+                                {/* Bar Chart */}
+                                <div className="absolute inset-0 flex items-end justify-between px-1">
+                                    {dashboardStats.chartData.map((d, i) => {
+                                        const progressPct = dashboardStats.maxChartValue > 0 ? (d.progress / dashboardStats.maxChartValue) * 100 : 0;
+                                        const invoicePct = dashboardStats.maxChartValue > 0 ? (d.invoice / dashboardStats.maxChartValue) * 100 : 0;
+                                        return (
+                                            <div key={i} className="flex-1 flex justify-center items-end space-x-1 h-full z-10 relative group">
+                                                <div className="w-1/2 max-w-[1.2rem] bg-blue-400 rounded-t-sm transition-all duration-500 hover:bg-blue-500" style={{ height: `${progressPct}%` }} title={`Progress ${d.fullMonth}: ${formatIDR(d.progress)}`}></div>
+                                                <div className="w-1/2 max-w-[1.2rem] bg-indigo-600 rounded-t-sm transition-all duration-500 hover:bg-indigo-700" style={{ height: `${invoicePct}%` }} title={`Invoice ${d.fullMonth}: ${formatIDR(d.invoice)}`}></div>
+                                                {/* Label Sumbu X (Bulan) */}
+                                                <span className="absolute -bottom-6 text-[11px] text-gray-500 font-medium truncate w-full text-center">{d.name}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {showProgressDetails && (
+                        <div className="p-4 bg-white border mt-4 rounded-xl shadow-sm animate-fade-in">
+                            <h3 className="font-bold mb-3 flex items-center text-blue-600"><Icon name="TrendingUp" className="mr-2"/> Rincian Progress</h3>
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-blue-50"><tr><th className="p-2">Periode</th><th className="p-2 text-right">Diakui</th><th className="p-2 text-right">Ditagih (via Invoice)</th><th className="p-2 text-right">Sisa Unbilled</th></tr></thead>
+                                <tbody>
+                                    {dashboardStats.detailProgressArray.map(dp => (
+                                        <tr key={dp.period} className="border-t hover:bg-blue-50/30">
+                                            <td className="p-2 font-medium">{dp.period}</td>
+                                            <td className="p-2 text-right">{formatIDR(dp.diakui)}</td>
+                                            <td className="p-2 text-right text-gray-500">{formatIDR(dp.ditagih)}</td>
+                                            <td className={`p-2 text-right font-bold ${dp.sisa < 0 ? 'text-red-500' : 'text-blue-600'}`}>{formatIDR(dp.sisa)}</td>
+                                        </tr>
+                                    ))}
+                                    {dashboardStats.detailProgressArray.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-500">Belum ada progress atau invoice terkait progress</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    
+                    {showInvoiceDetails && (
+                        <div className="mt-4 animate-fade-in">
+                            <h3 className="font-bold mb-4 flex items-center text-indigo-600 ml-1">
+                                <Icon name="Receipt" className="mr-2"/> Rincian Tagihan Terbit (Berdasarkan Tgl Terbit)
+                            </h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {invoiceCards.map((card, idx) => (
+                                    <div key={idx} className="bg-white border-[3px] border-[#8da3cc] rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                                        <div className="bg-[#8da3cc] text-white p-3 text-center font-bold uppercase text-sm tracking-wide">
+                                            {card.title}
+                                        </div>
+                                        <div className="p-5 space-y-3 text-[13.5px] font-bold text-[#2C4A7B] bg-gradient-to-b from-white to-blue-50/30 flex-1">
+                                            <div className="flex justify-between items-center"><div className="flex w-40 justify-between mr-2"><span>Sales Amount</span><span>:</span></div><span className="flex-1 text-right">{formatIDR(card.data.dpp)}</span></div>
+                                            <div className="flex justify-between items-center"><div className="flex w-40 justify-between mr-2"><span>(-) Before Tax</span><span>:</span></div><span className={`flex-1 text-right ${card.data.pSblm > 0 ? 'text-red-500' : ''}`}>{card.data.pSblm > 0 ? `-${formatIDR(card.data.pSblm)}` : '-'}</span></div>
+                                            <div className="flex justify-between items-center"><div className="flex w-40 justify-between mr-2"><span>Tax</span><span>:</span></div><span className="flex-1 text-right">{formatIDR(card.data.ppn)}</span></div>
+                                            <div className="flex justify-between items-center"><div className="flex w-40 justify-between mr-2"><span>(-) After Tax</span><span>:</span></div><span className={`flex-1 text-right ${card.data.pStlh > 0 ? 'text-red-500' : ''}`}>{card.data.pStlh > 0 ? `-${formatIDR(card.data.pStlh)}` : '-'}</span></div>
+                                            <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-[#8da3cc]/30"><div className="flex w-40 justify-between mr-2"><span>Invoice Amount</span><span>:</span></div><span className="flex-1 text-right text-[15px]">{formatIDR(card.data.total)}</span></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {showDanaMasukDetails && (
+                        <div className="p-4 bg-white border mt-4 rounded-xl shadow-sm animate-fade-in">
+                            <h3 className="font-bold mb-3 flex items-center text-green-600"><Icon name="DollarSign" className="mr-2"/> Dana Masuk</h3>
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-green-50">
+                                    <tr>
+                                        <th className="p-2">Bulan</th>
+                                        <th className="p-2 text-right">W1</th>
+                                        <th className="p-2 text-right">W2</th>
+                                        <th className="p-2 text-right">W3</th>
+                                        <th className="p-2 text-right">W4</th>
+                                        <th className="p-2 text-right">W5</th>
+                                        <th className="p-2 text-right font-bold bg-green-100">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {dashboardStats.detailDanaMasuk.map(dm => (
+                                        <tr key={dm.name} className="border-t">
+                                            <td className="p-2">{dm.name}</td>
+                                            <td className="p-2 text-right">{formatIDR(dm.w1)}</td>
+                                            <td className="p-2 text-right">{formatIDR(dm.w2)}</td>
+                                            <td className="p-2 text-right">{formatIDR(dm.w3)}</td>
+                                            <td className="p-2 text-right">{formatIDR(dm.w4)}</td>
+                                            <td className="p-2 text-right">{formatIDR(dm.w5)}</td>
+                                            <td className="p-2 text-right font-bold text-green-700 bg-green-50/30">{formatIDR(dm.total)}</td>
+                                        </tr>
+                                    ))}
+                                    {/* PERBAIKAN: Grand Total Dana Masuk */}
+                                    <tr className="border-t-[3px] border-green-200 bg-green-100/50">
+                                        <td className="p-2 font-extrabold text-green-800 uppercase tracking-wide">Grand Total</td>
+                                        <td className="p-2 text-right font-bold text-green-700">{formatIDR(totalW1)}</td>
+                                        <td className="p-2 text-right font-bold text-green-700">{formatIDR(totalW2)}</td>
+                                        <td className="p-2 text-right font-bold text-green-700">{formatIDR(totalW3)}</td>
+                                        <td className="p-2 text-right font-bold text-green-700">{formatIDR(totalW4)}</td>
+                                        <td className="p-2 text-right font-bold text-green-700">{formatIDR(totalW5)}</td>
+                                        <td className="p-2 text-right font-extrabold text-green-900 bg-green-200/60 text-[15px]">{formatIDR(totalAll)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    
+                    {showPiutangDetails && <div className="p-4 bg-white border mt-4 rounded-xl shadow-sm animate-fade-in"><h3 className="font-bold mb-3 flex items-center text-red-600"><Icon name="AlertCircle" className="mr-2"/> Rincian Piutang Menunggak</h3><table className="w-full text-sm text-left"><thead className="bg-red-50"><tr><th className="p-2">Pelanggan</th><th className="p-2 text-center">Inv</th><th className="p-2 text-right">Sisa Piutang</th><th className="p-2 text-center w-10">AI</th></tr></thead><tbody>{dashboardStats.detailPiutangArray.map(dp => <Fragment key={dp.customerName}><tr className="border-t hover:bg-red-50 cursor-pointer" onClick={() => setSelectedCustomerPiutang(selectedCustomerPiutang === dp.customerName ? null : dp.customerName)}><td className="p-2 flex items-center"><Icon name={selectedCustomerPiutang === dp.customerName ? "ChevronUp" : "ChevronDown"} size={16} className="mr-2 text-gray-400"/> {dp.customerName}</td><td className="p-2 text-center"><span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">{dp.invoices.length}</span></td><td className="p-2 text-right font-bold text-red-600">{formatIDR(dp.totalSisa)}</td><td className="p-2 text-center"><button onClick={(e) => { e.stopPropagation(); analyzeCustomerRisk(dp.customerName, dp.invoices); }} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded">✨ Analisis</button></td></tr>{selectedCustomerPiutang === dp.customerName && (<tr><td colSpan="4" className="bg-gray-50 p-2"><div className="bg-white border ml-6"><table className="w-full text-xs"><thead><tr><th className="p-2">Inv</th><th className="p-2">Jatuh Tempo</th><th className="p-2 text-right">Sisa</th></tr></thead><tbody>{dp.invoices.map(inv => <tr key={inv.id}><td className="p-2">{inv.noInvoice}</td><td className="p-2">{formatDate(inv.tglJatuhTempo)}</td><td className="p-2 text-right text-red-500 font-bold">{formatIDR(inv.sisaPiutang)}</td></tr>)}</tbody></table></div></td></tr>)}</Fragment>)}</tbody></table></div>}
+
+                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-xl shadow-sm border border-indigo-100">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center space-x-2"><Icon name="Bot" className="text-indigo-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">Asisten Finansial AI</h3></div>
+                            <button onClick={generateFinancialInsight} disabled={isAiLoading || !isOnline} className="flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition">
+                                <Icon name="Sparkles" size={16} /> <span>{isAiLoading ? 'Menganalisis...' : '✨ Analisis Arus Kas'}</span>
+                            </button>
+                        </div>
+                        {aiInsight && <div className="bg-white/80 p-5 rounded-lg border border-indigo-100 text-gray-700 whitespace-pre-wrap text-sm">{aiInsight}</div>}
+                    </div>
+                </div>
+                );
+            };
+
+            const renderInvoiceTable = () => {
+                const filteredInvoices = processedInvoices.filter(inv => 
+                    (inv.noInvoice || '').toLowerCase().includes(searchTermInvoice.toLowerCase()) ||
+                    (inv.customerName || '').toLowerCase().includes(searchTermInvoice.toLowerCase()) ||
+                    (inv.statusPembayaran || '').toLowerCase().includes(searchTermInvoice.toLowerCase())
+                );
+                const sortedInvoices = [...filteredInvoices].sort((a, b) => { const dateA = new Date(a.date || 0).getTime(); const dateB = new Date(b.date || 0).getTime(); return dateA !== dateB ? dateB - dateA : (b.noInvoice||'').localeCompare(a.noInvoice||''); });
+
+                return (
+                <div className="space-y-4 animate-fade-in">
+                    <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center space-y-4 xl:space-y-0">
+                        <h2 className="text-2xl font-bold text-gray-800">Manajemen Invoice</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {selectedInvoices.length > 0 && (
+                                <button onClick={() => setConfirmModal({isOpen: true, title: 'Hapus Permanen', message: `Hapus ${selectedInvoices.length} Invoice?`, onConfirm: async () => { await deleteMultipleData('invoices', selectedInvoices); setSelectedInvoices([]); showToast('Terhapus.'); }})} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg flex items-center text-sm font-bold border border-red-600"><Icon name="Trash2" size={16} className="mr-1" /> Hapus Terpilih ({selectedInvoices.length})</button>
+                            )}
+                            <div className="relative w-full sm:w-64">
+                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><Icon name="Search" size={14} /></span>
+                                <input type="text" placeholder="Cari Invoice, Pelanggan..." value={searchTermInvoice} onChange={(e) => setSearchTermInvoice(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm outline-none w-full focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <button onClick={() => downloadTemplateExcel('invoice')} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-2 rounded-lg flex items-center text-sm font-semibold border"><Icon name="Table" size={16} className="mr-1" /> Template</button>
+                            <label className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-2 rounded-lg flex items-center text-sm font-semibold border cursor-pointer"><Icon name="UploadCloud" size={16} className="mr-1" /> Import Excel<input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputInvoice} onChange={(e) => handleImportExcel(e, 'invoice')} /></label>
+                            <button onClick={() => { if(customers.length===0) return showToast("Isi pelanggan dulu.","error"); setIsMagicModalOpen(true); }} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-lg flex items-center font-medium"><Icon name="Sparkles" size={18} className="mr-2" /> ✨ Auto-Buat</button>
+                            <button onClick={() => { if(customers.length===0) return showToast("Isi pelanggan dulu.","error"); setInvoiceForm(initialInvoiceForm); setIsInvoiceModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"><Icon name="Plus" size={18} className="mr-2" /> Buat Baru</button>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left whitespace-nowrap">
+                            <thead className="bg-gray-50 text-gray-600 border-b">
+                                <tr>
+                                    <th className="px-4 py-3 w-10 text-center"><input type="checkbox" onChange={(e) => setSelectedInvoices(e.target.checked ? sortedInvoices.map(i=>i.id) : [])} checked={sortedInvoices.length>0 && selectedInvoices.length===sortedInvoices.length} className="w-4 h-4 cursor-pointer rounded" /></th>
+                                    <th className="px-4 py-3">No. Invoice</th><th className="px-4 py-3">Pelanggan</th><th className="px-4 py-3">Tgl Terbit</th><th className="px-4 py-3">Jatuh Tempo</th><th className="px-4 py-3 text-right">Total Tagihan</th><th className="px-4 py-3 text-right">Dana Masuk</th><th className="px-4 py-3 text-right">Sisa Piutang</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedInvoices.length === 0 && <tr><td colSpan="10" className="text-center py-8 text-gray-400">Data tidak ditemukan.</td></tr>}
+                                {sortedInvoices.map(inv => {
+                                    let isOverdue = false; if (inv.tglJatuhTempo !== '-' && inv.statusPembayaran === 'OUTSTANDING') { const due = new Date(inv.tglJatuhTempo); if (due < new Date()) isOverdue = true; }
+                                    return (
+                                        <tr key={inv.id} className={`border-b border-gray-50 transition ${inv.statusPembayaran === 'BATAL' ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'}`}>
+                                            <td className="px-4 py-3 text-center"><input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={() => setSelectedInvoices(prev => prev.includes(inv.id) ? prev.filter(i => i !== inv.id) : [...prev, inv.id])} className="w-4 h-4 cursor-pointer" /></td>
+                                            <td className={`px-4 py-3 font-medium text-blue-600 ${inv.statusPembayaran === 'BATAL' ? 'line-through text-gray-400' : ''}`}>{inv.noInvoice}<br/>{inv.statusPembayaran !== 'BATAL' && <span className="text-xs font-normal text-gray-500">{inv.type}</span>}</td>
+                                            <td className={`px-4 py-3 ${inv.statusPembayaran === 'BATAL' ? 'line-through text-gray-400' : ''}`}>{inv.customerName}<br/>{inv.periodeProgress && inv.statusPembayaran !== 'BATAL' && <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Prg: {inv.periodeProgress}</span>}</td>
+                                            <td className="px-4 py-3">{inv.statusPembayaran === 'BATAL' ? '-' : formatDate(inv.date)}</td>
+                                            <td className="px-4 py-3"><span className={isOverdue ? 'text-red-600 font-bold' : ''}>{inv.statusPembayaran === 'BATAL' ? '-' : formatDate(inv.tglJatuhTempo)}</span></td>
+                                            <td className={`px-4 py-3 text-right font-semibold ${inv.statusPembayaran === 'BATAL' ? 'text-gray-400' : ''}`}>{formatIDR(inv.totalTagihan)}</td>
+                                            <td className="px-4 py-3 text-right">
+                                                <span className={`font-semibold ${inv.danaMasuk > 0 ? 'text-green-600' : 'text-gray-400'}`}>{formatIDR(inv.danaMasuk)}</span>
+                                                {inv.paymentHistory && inv.paymentHistory.length > 1 && (<div className="text-[10px] text-purple-600 mt-0.5 font-bold">{inv.paymentHistory.length}x Pay</div>)}
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-bold ${inv.statusPembayaran === 'BATAL' ? 'text-gray-400' : 'text-red-500'}`}>{formatIDR(inv.sisaPiutang)}</td>
+                                            <td className="px-4 py-3 text-center"><span className={`px-2 py-1 rounded text-xs font-bold ${inv.statusPembayaran === 'PAID' ? 'bg-green-100 text-green-700' : inv.statusPembayaran === 'BATAL' ? 'bg-gray-200 text-gray-600' : 'bg-red-100 text-red-700'}`}>{inv.statusPembayaran}</span></td>
+                                            <td className="px-4 py-3 text-center">
+                                                {inv.statusPembayaran !== 'BATAL' ? (
+                                                    <div className="flex justify-center items-center space-x-2">
+                                                        <button onClick={() => openEditInvoice(inv)} className="bg-blue-100 hover:bg-blue-200 text-blue-700 p-1.5 rounded-md transition"><Icon name="Edit" size={16} /></button>
+                                                        <button onClick={() => openEditPayment(inv)} className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-md transition"><Icon name="CreditCard" size={16} /></button>
+                                                        {inv.statusPembayaran === 'OUTSTANDING' && (
+                                                            <Fragment>
+                                                                <button onClick={() => openEmailDrafter(inv)} className="bg-purple-100 hover:bg-purple-200 text-purple-700 p-1.5 rounded-md transition"><Icon name="Sparkles" size={16} /></button>
+                                                                <button onClick={() => confirmCancelInvoice(inv)} className="bg-gray-100 hover:bg-red-200 text-gray-500 hover:text-red-700 p-1.5 rounded-md transition"><Icon name="Ban" size={16} /></button>
+                                                            </Fragment>
+                                                        )}
+                                                    </div>
+                                                ) : (<span className="text-xs text-gray-400">Dibatalkan</span>)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+                );
+            };
+
+            const renderProgressTable = () => {
+                const filteredProgresses = progresses.filter(prog => (prog.period||'').toLowerCase().includes(searchTermProgress.toLowerCase()) || (prog.items||[]).some(it => (it.project||'').toLowerCase().includes(searchTermProgress.toLowerCase())));
+                return (
+                <div className="space-y-4 animate-fade-in">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-gray-800">Pengakuan Progress (Unbilled)</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative w-full sm:w-64"><span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><Icon name="Search" size={14} /></span><input type="text" placeholder="Cari..." value={searchTermProgress} onChange={(e) => setSearchTermProgress(e.target.value)} className="pl-9 pr-4 py-2 border rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                            <button onClick={() => downloadTemplateExcel('progress')} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-3 py-2 rounded-lg text-sm font-semibold flex items-center"><Icon name="Table" size={16} className="mr-1"/> Template</button>
+                            <label className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-2 rounded-lg text-sm font-semibold flex items-center cursor-pointer"><Icon name="UploadCloud" size={16} className="mr-1"/> Import Excel<input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputProgress} onChange={(e) => handleImportExcel(e, 'progress')} /></label>
+                            <button onClick={() => { setProgressForm(initialProgressForm); setIsProgressModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"><Icon name="Plus" size={18} className="mr-2" /> Input Baru</button>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 border-b"><tr><th className="px-4 py-3 w-16 text-center">Urutan</th><th className="px-4 py-3">Periode</th><th className="px-4 py-3">Rincian Pekerjaan</th><th className="px-4 py-3 text-right">Total Pengakuan (Rp)</th><th className="px-4 py-3 text-center">Aksi</th></tr></thead>
+                            <tbody>
+                                {filteredProgresses.length === 0 && <tr><td colSpan="5" className="text-center py-8 text-gray-400">Data tidak ditemukan.</td></tr>}
+                                {filteredProgresses.map((prog, index) => (
+                                    <tr key={prog.id} className="border-b border-gray-50 hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-center bg-gray-50/50">
+                                            <div className="flex flex-col items-center justify-center space-y-1">
+                                                <button onClick={() => handleMoveProgress(prog.id, 'up')} disabled={index===0||!!searchTermProgress} className={`p-1 rounded ${index===0||!!searchTermProgress?'text-gray-300':'text-blue-500 hover:bg-blue-100'}`}><Icon name="ArrowUp" size={12} /></button>
+                                                <button onClick={() => handleMoveProgress(prog.id, 'down')} disabled={index===filteredProgresses.length-1||!!searchTermProgress} className={`p-1 rounded ${index===filteredProgresses.length-1||!!searchTermProgress?'text-gray-300':'text-blue-500 hover:bg-blue-100'}`}><Icon name="ArrowDown" size={12} /></button>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 font-medium align-top">{prog.period}</td>
+                                        <td className="px-4 py-3 align-top">
+                                            {prog.items && Array.isArray(prog.items) ? (
+                                                <ul className="space-y-1">
+                                                    {prog.items.map((it, i) => (
+                                                        <li key={i}><span>{it.project} <span className="text-xs text-gray-500">({it.jobcode})</span></span> <span className="text-xs text-blue-600 font-medium">{formatIDR(it.amount)}</span></li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <Fragment>{prog.project}<br/><span className="text-xs text-gray-500">{prog.jobcode ? `(${prog.jobcode})` : ''}</span></Fragment>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-right align-top font-bold text-blue-700">{formatIDR(prog.items && Array.isArray(prog.items) ? prog.items.reduce((s,it)=>s+Number(it.amount),0) : prog.amount)}</td>
+                                        <td className="px-4 py-3 text-center align-top"><div className="flex justify-center items-center space-x-2"><button onClick={() => openEditProgress(prog)} className="text-blue-600 p-1.5 bg-blue-50 hover:bg-blue-100 rounded"><Icon name="Edit" size={16} /></button><button onClick={() => confirmDeleteProgress(prog.id)} className="text-red-500 p-1.5 bg-red-50 hover:bg-red-100 rounded"><Icon name="Trash2" size={16} /></button></div></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                );
+            };
+
+            const renderSettings = () => {
+                const filtered = customers.filter(c => (c.name||'').toLowerCase().includes(searchTermCustomer.toLowerCase()));
+                return (
+                <div className="space-y-4 animate-fade-in">
+                    <div className="flex justify-between items-center max-w-4xl">
+                        <h2 className="text-2xl font-bold text-gray-800">Master Data Pelanggan</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative w-full sm:w-56"><span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><Icon name="Search" size={14} /></span><input type="text" placeholder="Cari Pelanggan..." value={searchTermCustomer} onChange={(e) => setSearchTermCustomer(e.target.value)} className="pl-9 pr-4 py-2 border rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                            <button onClick={() => downloadTemplateExcel('pelanggan')} className="bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg flex items-center text-sm font-semibold border"><Icon name="Table" size={16} className="mr-1"/> Template</button>
+                            <label className="bg-purple-100 text-purple-700 px-3 py-2 rounded-lg flex items-center text-sm font-semibold border cursor-pointer"><Icon name="UploadCloud" size={16} className="mr-1"/> Import Excel<input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputPelanggan} onChange={(e) => handleImportExcel(e, 'pelanggan')} /></label>
+                            <button onClick={() => { setSettingForm(initialSettingForm); setIsSettingModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"><Icon name="Plus" size={18} className="mr-2" /> Tambah Baru</button>
+                        </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl">
+                        <table className="w-full text-sm text-left"><thead className="bg-gray-50"><tr><th className="px-4 py-2">Nama Pelanggan</th><th className="px-4 py-2">Termin (Hari)</th><th className="px-4 py-2 text-center">Aksi</th></tr></thead><tbody>{filtered.length===0 && <tr><td colSpan="3" className="text-center py-8 text-gray-400">Data tidak ditemukan.</td></tr>}{filtered.map(c => (<tr key={c.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3">{c.name}</td><td className="px-4 py-3 font-medium">{c.term} Hari</td><td className="px-4 py-3 text-center"><button onClick={() => openEditSetting(c)} className="text-blue-600 p-1 bg-blue-50 rounded mr-2"><Icon name="Edit" size={16}/></button><button onClick={() => confirmDeleteSetting(c.id, c.name)} className="text-red-500 p-1 bg-red-50 rounded"><Icon name="Trash2" size={16}/></button></td></tr>))}</tbody></table>
+                    </div>
+                </div>
+                );
+            };
+
+            const renderJobcodeSettings = () => {
+                const filtered = jobcodes.filter(j => (j.jobcode||'').toLowerCase().includes(searchTermJobcode.toLowerCase()) || (j.namaPekerjaan||'').toLowerCase().includes(searchTermJobcode.toLowerCase()));
+                return (
+                <div className="space-y-4 animate-fade-in">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-gray-800">Setting Jobcode &amp; Relasi</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative w-full sm:w-64"><span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><Icon name="Search" size={14} /></span><input type="text" placeholder="Cari Jobcode..." value={searchTermJobcode} onChange={(e) => setSearchTermJobcode(e.target.value)} className="pl-9 pr-4 py-2 border rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                            <button onClick={() => downloadTemplateExcel('jobcode')} className="bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg flex items-center text-sm font-semibold border"><Icon name="Table" size={16} className="mr-1"/> Template</button>
+                            <label className="bg-purple-100 text-purple-700 px-3 py-2 rounded-lg flex items-center text-sm font-semibold border cursor-pointer"><Icon name="UploadCloud" size={16} className="mr-1"/> Import Excel<input type="file" accept=".xlsx, .xls" className="hidden" ref={fileInputJobcode} onChange={(e) => handleImportExcel(e, 'jobcode')} /></label>
+                            <button onClick={() => { setJobcodeForm(initialJobcodeForm); setIsJobcodeModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"><Icon name="Plus" size={18} className="mr-2" /> Tambah Baru</button>
+                        </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-sm border overflow-hidden">
+                        <table className="w-full text-sm text-left"><thead className="bg-gray-50"><tr><th className="px-4 py-2">Jobcode</th><th className="px-4 py-2">Nama Pekerjaan</th><th className="px-4 py-2">Pelanggan (Klien)</th><th className="px-4 py-2">Jenis Pekerjaan</th><th className="px-4 py-2">Lokasi</th><th className="px-4 py-2 text-center">Aksi</th></tr></thead><tbody>{filtered.length===0 && <tr><td colSpan="6" className="text-center py-8 text-gray-400">Data tidak ditemukan.</td></tr>}{filtered.map(j => (<tr key={j.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 font-medium text-blue-600">{j.jobcode}</td><td className="px-4 py-3">{j.namaPekerjaan}</td><td className="px-4 py-3"><span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-semibold">{j.customerName || '- Multi Pelanggan -'}</span></td><td className="px-4 py-3">{j.type}</td><td className="px-4 py-3 text-gray-600">{j.lokasi}</td><td className="px-4 py-3 text-center"><button onClick={() => openEditJobcode(j)} className="text-blue-600 p-1 bg-blue-50 rounded mr-2"><Icon name="Edit" size={16}/></button><button onClick={() => confirmDeleteJobcode(j.id, j.jobcode)} className="text-red-500 p-1 bg-red-50 rounded"><Icon name="Trash2" size={16}/></button></td></tr>))}</tbody></table>
+                    </div>
+                </div>
+                );
+            };
+
+            const renderBankAccountSettings = () => {
+                const filtered = bankAccounts.filter(b => (b.namaBank||'').toLowerCase().includes(searchTermBankAccount.toLowerCase()));
+                return (
+                <div className="space-y-4 animate-fade-in">
+                    <div className="flex justify-between items-center max-w-4xl">
+                        <h2 className="text-2xl font-bold text-gray-800">Master Rekening Perusahaan</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="relative w-full sm:w-56"><span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><Icon name="Search" size={14} /></span><input type="text" placeholder="Cari Rekening..." value={searchTermBankAccount} onChange={(e) => setSearchTermBankAccount(e.target.value)} className="pl-9 pr-4 py-2 border rounded-lg text-sm w-full outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                            <button onClick={() => { setBankAccountForm(initialBankAccountForm); setIsBankAccountModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"><Icon name="Plus" size={18} className="mr-2" /> Tambah Rekening</button>
+                        </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-sm border max-w-4xl">
+                        <table className="w-full text-sm text-left"><thead className="bg-gray-50"><tr><th className="px-4 py-2">Nama Bank</th><th className="px-4 py-2">No. Rekening</th><th className="px-4 py-2">Atas Nama</th><th className="px-4 py-2 text-center">Aksi</th></tr></thead><tbody>{filtered.length===0 && <tr><td colSpan="4" className="text-center py-8 text-gray-400">Belum ada data rekening.</td></tr>}{filtered.map(b => (<tr key={b.id} className="border-b hover:bg-gray-50"><td className="px-4 py-3 font-bold text-indigo-700">{b.namaBank}</td><td className="px-4 py-3 font-medium">{b.noRekening}</td><td className="px-4 py-3">{b.atasNama}</td><td className="px-4 py-3 text-center"><button onClick={() => openEditBankAccount(b)} className="text-blue-600 p-1 bg-blue-50 rounded mr-2"><Icon name="Edit" size={16}/></button><button onClick={() => confirmDeleteBankAccount(b.id, b.namaBank)} className="text-red-500 p-1 bg-red-50 rounded"><Icon name="Trash2" size={16}/></button></td></tr>))}</tbody></table>
+                    </div>
+                </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans relative overflow-hidden">
+                <LoadingOverlay />
+                
+                {/* SIDEBAR */}
+                <div className={`bg-white border-r border-gray-200 shadow-sm flex flex-col z-20 relative transition-all duration-300 flex-shrink-0 ${isSidebarOpen ? 'w-full md:w-64' : 'w-20'}`}>
+                    <div className="p-4 border-b border-gray-100 flex flex-col relative min-h-[110px]">
+                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`absolute top-4 ${isSidebarOpen ? 'right-4' : 'left-1/2 transform -translate-x-1/2'} text-gray-400 hover:text-blue-600 bg-white p-1 rounded-md`}><Icon name="Menu" size={20} /></button>
+                        {isSidebarOpen ? (
+                            <div className="mt-8">
+                                <h1 className="text-lg font-extrabold text-blue-700 truncate">{profile.name}</h1>
+                                <p className="text-xs font-semibold text-gray-500 mt-1.5 mb-3 leading-snug">Sistem Keuangan</p>
+                                <div className="text-[10px] font-medium text-gray-400 flex items-center space-x-1 border-t border-gray-50 pt-2"><Icon name={!isOnline ? 'WifiOff' : 'Database'} size={10} className={!isOnline ? 'text-red-500' : 'text-green-500'} /><span className={!isOnline ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>{!isOnline ? 'Mode Offline' : 'Local DB Active'}</span></div>
+                            </div>
+                        ) : (<div className="mt-10 flex justify-center"><Icon name="Building" size={24} className="text-blue-600" /></div>)}
+                    </div>
+                    
+                    <nav className="flex-1 p-3 space-y-2 overflow-y-auto">
+                        {['dashboard', 'progress', 'invoice', 'setting', 'jobcode', 'rekening'].map(tab => (
+                            <button key={tab} onClick={() => setActiveTab(tab)} className={`w-full flex items-center ${isSidebarOpen ? 'space-x-3 px-4 justify-start' : 'justify-center px-0'} py-3 rounded-lg text-sm font-medium transition ${activeTab === tab ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                <Icon name={tab==='dashboard'?'LayoutDashboard':tab==='progress'?'FileText':tab==='invoice'?'Receipt':tab==='setting'?'Settings':tab==='jobcode'?'Briefcase':'Landmark'} size={isSidebarOpen ? 18 : 22} />
+                                {isSidebarOpen && <span className="capitalize">{tab==='setting'?'Pelanggan':tab==='jobcode'?'Jobcode':tab==='rekening'?'Rekening':tab}</span>}
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="p-4 border-t border-gray-100">
+                        <button onClick={onLogout} className={`w-full flex items-center text-red-500 hover:bg-red-50 rounded-lg p-3 transition ${isSidebarOpen ? 'justify-start space-x-2' : 'justify-center'}`} title="Keluar / Ganti Ruang Kerja">
+                            <Icon name="LogOut" size={18} />
+                            {isSidebarOpen && <span className="font-bold text-sm">Ganti Workspace</span>}
+                        </button>
+                    </div>
+                </div>
+
+                {/* CONTENT AREA */}
+                <div className="flex-1 p-8 overflow-y-auto relative z-10">
+                    <div className="max-w-7xl mx-auto">
+                        {activeTab === 'dashboard' && renderDashboard()}
+                        {activeTab === 'progress' && renderProgressTable()}
+                        {activeTab === 'invoice' && renderInvoiceTable()}
+                        {activeTab === 'setting' && renderSettings()}
+                        {activeTab === 'jobcode' && renderJobcodeSettings()}
+                        {activeTab === 'rekening' && renderBankAccountSettings()}
+                    </div>
+                </div>
+
+                {/* FLOATING CHAT AI */}
+                <div className="fixed bottom-6 right-6 z-[60]">
+                    {isChatOpen ? (
+                        <div className="bg-white w-80 sm:w-96 h-[30rem] rounded-2xl shadow-2xl flex flex-col border border-purple-100 chat-slide-up">
+                            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 text-white flex justify-between items-center shadow-md">
+                                <div className="flex items-center space-x-2"><div className="bg-white/20 p-2 rounded-lg"><Icon name="Bot" size={20} /></div><div><h3 className="font-bold text-sm">HRI AI Assistant ✨</h3><p className="text-[10px] text-purple-100">Ketik untuk bertanya</p></div></div>
+                                <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-md"><Icon name="X" size={16}/></button>
+                            </div>
+                            <div className="flex-1 p-4 overflow-y-auto bg-gray-50 space-y-4">
+                                {chatHistory.map((msg, i) => (<div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm ${msg.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-700 rounded-bl-none'}`}>{msg.text}</div></div>))}
+                                {isChatLoading && (<div className="flex justify-start"><div className="max-w-[85%] p-3 rounded-2xl bg-white border border-gray-100 text-gray-500 rounded-bl-none text-sm flex space-x-2"><div className="flex space-x-1"><div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div><div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div></div></div></div>)}
+                                <div ref={chatEndRef} />
+                            </div>
+                            <div className="p-3 bg-white border-t border-gray-100">
+                                <form onSubmit={(e) => { e.preventDefault(); handleSendChat(); }} className="flex items-center space-x-2 bg-gray-50 border rounded-xl px-2 py-1 focus-within:ring-2 focus-within:ring-purple-500">
+                                    <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Tanya sesuatu..." disabled={isChatLoading} className="flex-1 bg-transparent border-none focus:outline-none px-2 py-2 text-sm text-gray-700" />
+                                    <button type="submit" disabled={!chatInput.trim() || isChatLoading} className="bg-purple-600 text-white p-2 rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"><Icon name="Send" size={14} /></button>
+                                </form>
+                            </div>
+                        </div>
+                    ) : (
+                        <button onClick={() => setIsChatOpen(true)} className="bg-purple-600 text-white p-4 rounded-full shadow-2xl hover:bg-purple-700 hover:scale-110 transition-all duration-300 relative group">
+                            <Icon name="MessageCircle" size={24} />
+                            <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span></span>
+                        </button>
+                    )}
+                </div>
+
+                {/* MODAL 1: MAGIC INPUT */}
+                {isMagicModalOpen && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+                        <div className="flex justify-between items-center p-5 border-b bg-purple-50 rounded-t-xl"><h3 className="text-lg font-bold text-purple-800 flex items-center"><Icon name="Sparkles" size={20} className="mr-2"/> ✨ Magic Input Invoice</h3><button onClick={() => setIsMagicModalOpen(false)} className="text-purple-400 hover:text-purple-600"><Icon name="X" size={20}/></button></div>
+                        <div className="p-6 space-y-4"><p className="text-sm text-gray-600">Salin instruksi dari WhatsApp/Email. AI akan mengisi form otomatis.</p><textarea value={magicText} onChange={(e) => setMagicText(e.target.value)} placeholder="Tolong buatkan invoice untuk PT Sejahtera..." className="w-full h-40 p-4 border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 bg-purple-50/20 text-sm resize-none"></textarea></div>
+                        <div className="flex justify-end p-4 border-t bg-gray-50 rounded-b-xl space-x-3"><button onClick={() => setIsMagicModalOpen(false)} className="px-5 py-2 text-gray-600 hover:bg-gray-200 rounded-lg">Batal</button><button onClick={handleMagicParse} disabled={isMagicLoading || !magicText.trim()} className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-lg hover:from-purple-700 flex items-center">{isMagicLoading ? <Icon name="Sync" size={16} className="animate-spin mr-2"/> : <Icon name="Sparkles" size={16} className="mr-2"/>} Ekstrak</button></div>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 2: INVOICE FORM */}
+                {isInvoiceModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10"><h3 className="text-xl font-bold text-gray-800 flex items-center"><Icon name="Database" size={20} className="mr-2 text-blue-600"/> {invoiceForm.id ? 'Edit Invoice' : 'Form Input Invoice'}</h3></div>
+                        {invoiceError && (<div className="mx-6 mt-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center space-x-2"><Icon name="AlertCircle" size={20} /><span className="font-medium text-sm">{invoiceError}</span></div>)}
+                        <form onSubmit={handleSaveInvoice} className="p-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="space-y-5">
+                                <h4 className="font-bold text-gray-800 border-b pb-2 flex items-center"><Icon name="FileText" size={18} className="mr-2 text-blue-600"/> Informasi Dokumen</h4>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">No. Invoice</label><input required type="text" name="noInvoice" value={invoiceForm.noInvoice} onChange={handleInvoiceFormChange} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="HRI-INV-..." /></div>
+                                <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">No. Faktur Pajak</label><input type="text" name="noFakturPajak" value={invoiceForm.noFakturPajak} onChange={handleInvoiceFormChange} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Pembetulan Ke-</label><input type="text" name="pembetulanFaktur" value={invoiceForm.pembetulanFaktur} onChange={handleInvoiceFormChange} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" /></div></div>
+                                <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-gray-700 mb-1">Tgl. Terbit</label><input required type="date" name="date" value={invoiceForm.date} onChange={handleInvoiceFormChange} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Jenis Pekerjaan</label><input readOnly type="text" name="type" value={invoiceForm.type} className="w-full border border-gray-300 rounded-md p-2 outline-none bg-gray-100 text-gray-500" /></div></div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="col-span-2"><label className="block text-sm font-medium text-blue-700 mb-1 flex items-center"><Icon name="Briefcase" size={14} className="mr-1"/> Nama Pekerjaan (Lookup Master)</label><input list="jobcode-list" name="namaPekerjaanLookup" value={invoiceForm.namaPekerjaanLookup} onChange={handleInvoiceFormChange} placeholder="Ketik atau pilih pekerjaan..." autoComplete="off" className="w-full border border-blue-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50" /><datalist id="jobcode-list">{jobcodes.map(j => <option key={j.id} value={j.namaPekerjaan}>{j.jobcode}</option>)}</datalist></div>
+                                    <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Pelanggan</label><select required name="customerName" value={invoiceForm.customerName} onChange={handleInvoiceFormChange} disabled={isCustomerLocked} className={`w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500 ${isCustomerLocked ? 'bg-gray-100 text-gray-600 font-semibold' : 'bg-white'}`}><option value="">-- Pilih --</option>{customers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                                    <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Periode Progress (Opsional)</label><input list="periode-list" name="periodeProgress" value={invoiceForm.periodeProgress} onChange={handleInvoiceFormChange} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /><datalist id="periode-list">{uniqueProgressPeriods.map(period => <option key={period} value={period} />)}</datalist></div>
+                                    <div className="col-span-2 bg-blue-50 p-3 rounded-lg border border-blue-100 mt-2"><label className="block text-sm font-semibold text-blue-800 mb-2">Penyerahan &amp; Jatuh Tempo</label><div className="grid grid-cols-2 gap-4 items-center"><div><label className="block text-xs font-medium text-gray-600 mb-1">Tgl Penyerahan</label><input required type="date" name="tglPenyerahan" value={invoiceForm.tglPenyerahan} onChange={handleInvoiceFormChange} className="w-full border border-blue-200 rounded-md p-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" /></div><div className="text-right"><label className="block text-xs font-medium text-gray-600 mb-1">Jatuh Tempo ({previewTermin} Hari)</label><span className="font-bold text-blue-900 text-lg">{formatDate(previewJatuhTempoStr)}</span></div></div></div>
+                                </div>
+                                <div><div className="flex justify-between items-center mb-1"><label className="block text-sm font-medium text-gray-700">Keterangan / Deskripsi</label><button type="button" onClick={generateInvoiceDesc} disabled={!isOnline || isGeneratingDesc} className="text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded"><Icon name="Sparkles" size={10} className="mr-1" /> ✨ Auto</button></div><textarea required name="desc" value={invoiceForm.desc} onChange={handleInvoiceFormChange} rows="3" className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500"></textarea></div>
+                            </div>
+                            
+                            <div className="space-y-5 bg-gray-50 p-5 rounded-xl border border-gray-200">
+                                <h4 className="font-bold text-gray-800 border-b pb-2 flex items-center"><Icon name="Calculator" size={18} className="mr-2 text-blue-600"/> Kalkulasi Finansial</h4>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Harga Jual / DPP (Rp)</label><input type="text" required name="hargaJual" value={formatRibuan(invoiceForm.hargaJual)} onChange={(e) => handleNumberInput(e, 'hargaJual')} className="w-full border border-gray-300 rounded-md p-2.5 text-right font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Pengurang Sebelum PPN (Rp)</label><input type="text" name="pengurangSblm" value={formatRibuan(invoiceForm.pengurangSblm)} onChange={(e) => handleNumberInput(e, 'pengurangSblm')} className="w-full border border-gray-300 rounded-md p-2 text-right outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                                
+                                {(invoiceForm.type || '').toUpperCase() === 'PENJUALAN ASSET' && (
+                                    <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-md">
+                                        <label className="block text-xs font-bold text-yellow-800 mb-1">Tarif PPN Asset:</label>
+                                        <select name="ppnRate" value={invoiceForm.ppnRate} onChange={handleInvoiceFormChange} className="w-full border border-yellow-300 rounded-md p-1.5 text-sm outline-none bg-white">
+                                            <option value={0.11}>11% - dari (11/12 x 12%)</option>
+                                            <option value={0.12}>12% - Full</option>
+                                        </select>
+                                    </div>
+                                )}
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
+                                        <label className="block text-xs font-semibold text-blue-800 mb-1">PPN (Otomatis)</label>
+                                        <div className="text-right font-bold text-blue-900">{formatIDR(invoiceForm.ppn)}</div>
+                                        <div className="text-[10px] text-blue-600 text-right mt-1">
+                                            {((invoiceForm.type || '').toUpperCase() === 'PENJUALAN ASSET' && Number(invoiceForm.ppnRate) === 0.12) ? '12%' : '11/12 x 12%'} dari Dasar
+                                        </div>
+                                    </div>
+                                    <div className="bg-red-50 p-3 rounded-md border border-red-100">
+                                        <label className="block text-xs font-semibold text-red-800 mb-1">PPh Psl 23 (Otomatis)</label>
+                                        <div className="text-right font-bold text-red-900">{formatIDR(invoiceForm.pph23)}</div>
+                                        <div className="text-[10px] text-red-600 text-right mt-1">
+                                            {((invoiceForm.type || '').toUpperCase() === 'PENJUALAN ASSET' || (invoiceForm.type || '').toUpperCase() === 'SPAREPART') ? 'Bebas PPh' : '2%'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Pengurang Setelah PPN (Rp)</label><input type="text" name="pengurangStlh" value={formatRibuan(invoiceForm.pengurangStlh)} onChange={(e) => handleNumberInput(e, 'pengurangStlh')} className="w-full border border-gray-300 rounded-md p-2 text-right outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                                <div className="pt-4 border-t border-gray-200"><div className="flex justify-between items-center bg-gray-800 text-white p-4 rounded-lg shadow-inner"><span className="font-semibold">TOTAL INVOICE</span><span className="text-xl font-bold tracking-wider">{formatIDR(previewTotalInvoice)}</span></div></div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end pt-8 mt-4 border-t border-gray-100 space-x-3"><button type="button" onClick={() => { setIsInvoiceModalOpen(false); setInvoiceError(''); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Batal</button><button type="submit" className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center shadow-md"><Icon name="Save" size={18} className="mr-2" /> Simpan Invoice</button></div>
+                        </form>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 3: PAYMENT FORM */}
+                {isPaymentModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center p-5 border-b bg-green-50 rounded-t-xl sticky top-0 z-10"><h3 className="text-lg font-bold text-green-800 flex items-center"><Icon name="CreditCard" size={20} className="mr-2"/> Update Pembayaran</h3></div>
+                        <div className="p-6 space-y-4">
+                            <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg border border-gray-200"><div><p className="text-xs text-gray-500">Total Tagihan (Stlh PPh)</p><p className="font-bold text-lg text-gray-800">{formatIDR(paymentForm.totalSetelahPph)}</p></div><div className="text-right"><p className="text-xs text-gray-500">Sisa Piutang Saat Ini</p><p className="font-bold text-lg text-red-600">{formatIDR(paymentForm.totalSetelahPph - paymentForm.history.reduce((s, h) => s + Number(h.danaMasuk) + Number(h.backcharge), 0))}</p></div></div>
+                            {paymentForm.history.length > 0 && (
+                                <div className="border border-green-200 rounded-lg overflow-hidden">
+                                    <div className="bg-green-100 text-green-800 text-xs font-bold px-3 py-2">Riwayat Pembayaran</div>
+                                    <table className="w-full text-xs text-left"><thead className="bg-green-50 text-gray-600"><tr><th className="px-3 py-2">Tanggal</th><th className="px-3 py-2 text-right">Dana Masuk</th><th className="px-3 py-2 text-right">Admin</th><th className="px-3 py-2 text-center">Aksi</th></tr></thead><tbody>
+                                        {paymentForm.history.map(h => (<tr key={h.id} className="border-t border-green-50 hover:bg-green-50"><td className="px-3 py-2">{formatDate(h.tglPembayaran)}<br/><span className="text-[9px] text-gray-400">{h.namaBank}</span></td><td className="px-3 py-2 text-right font-medium text-green-700">{formatIDR(h.danaMasuk)}</td><td className="px-3 py-2 text-right text-gray-500">{formatIDR(h.backcharge)}</td><td className="px-3 py-2 text-center"><button type="button" onClick={() => setPaymentForm(prev => ({...prev, history: prev.history.filter(item => item.id !== h.id)}))} className="text-red-400 hover:text-red-600 transition"><Icon name="Trash2" size={14} /></button></td></tr>))}
+                                    </tbody></table>
+                                </div>
+                            )}
+                            <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm mt-4">
+                                <h4 className="text-sm font-bold text-gray-700 mb-3 border-b pb-2">Input Pembayaran Baru</h4>
+                                <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200"><label className="block text-sm font-semibold text-gray-700 mb-2">Pilih Rekening Perusahaan</label><select className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm bg-white" onChange={(e) => { const bank = bankAccounts.find(b => b.id === e.target.value); if(bank) setPaymentForm({...paymentForm, namaBankBaru: bank.namaBank, rekeningBankBaru: bank.noRekening}); else setPaymentForm({...paymentForm, namaBankBaru: '', rekeningBankBaru: ''}); }}><option value="">-- Manual / Pilih --</option>{bankAccounts.map(b => <option key={b.id} value={b.id}>{b.namaBank} - {b.noRekening}</option>)}</select></div>
+                                <div className="grid grid-cols-2 gap-4 mb-3"><div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Bank / Kas</label><input type="text" value={paymentForm.namaBankBaru} onChange={(e) => setPaymentForm({...paymentForm, namaBankBaru: e.target.value})} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">No. Rekening / Ref</label><input type="text" value={paymentForm.rekeningBankBaru} onChange={(e) => setPaymentForm({...paymentForm, rekeningBankBaru: e.target.value})} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm" /></div></div>
+                                <div className="grid grid-cols-2 gap-4 mb-3"><div><label className="block text-sm font-medium text-gray-700 mb-1">Dana Masuk (Rp)</label><input type="text" value={formatRibuan(paymentForm.danaMasukBaru)} onChange={(e) => setPaymentForm({...paymentForm, danaMasukBaru: parseRibuan(e.target.value)})} className="w-full border border-green-300 bg-green-50 rounded-md p-2 text-right font-bold text-green-700 outline-none focus:ring-2 focus:ring-green-500" /></div><div><label className="block text-sm font-medium text-gray-700 mb-1">Tgl Penerimaan</label><input type="date" value={paymentForm.tglPembayaranBaru} onChange={(e) => setPaymentForm({...paymentForm, tglPembayaranBaru: e.target.value})} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-green-500" /></div></div>
+                                <div><label className="block text-sm font-medium text-gray-700 mb-1">Backcharge / Potongan Bank (Rp)</label><input type="text" value={formatRibuan(paymentForm.backchargeBaru)} onChange={(e) => setPaymentForm({...paymentForm, backchargeBaru: parseRibuan(e.target.value)})} className="w-full border border-gray-300 rounded-md p-2 text-right outline-none focus:ring-2 focus:ring-green-500" /></div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end p-5 border-t bg-gray-50 rounded-b-xl space-x-3"><button type="button" onClick={() => setIsPaymentModalOpen(false)} className="px-5 py-2 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 transition">Batal</button><button type="button" onClick={handleSavePayment} className="px-5 py-2 bg-green-600 text-white font-bold rounded-md hover:bg-green-700 transition">Simpan Pembayaran</button></div>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 4: PROGRESS FORM */}
+                {isProgressModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center p-5 border-b sticky top-0 bg-white z-10"><h3 className="text-xl font-bold text-gray-800 flex items-center"><Icon name="TrendingUp" size={20} className="mr-2 text-blue-600"/> {progressForm.id ? 'Edit Progress' : 'Form Pengakuan Progress'}</h3></div>
+                        <form onSubmit={handleSaveProgress} className="p-6 space-y-4">
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Periode Progress</label><input required type="text" placeholder="Contoh: Januari 2026" value={progressForm.period} onChange={(e) => setProgressForm({...progressForm, period: e.target.value})} className="w-full border border-gray-300 rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                <div className="flex justify-between items-center mb-3"><h4 className="font-bold text-gray-700 text-sm">Rincian Pekerjaan</h4><button type="button" onClick={handleAddProgressItem} className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1.5 rounded font-medium flex items-center"><Icon name="Plus" size={12} className="mr-1" /> Tambah Baris</button></div>
+                                <div className="space-y-3">
+                                    {progressForm.items.map((item, index) => (
+                                        <div key={index} className="flex flex-col sm:flex-row gap-3 items-start sm:items-end bg-white p-3 border border-gray-200 rounded-md shadow-sm relative">
+                                            <div className="flex-1 w-full"><label className="block text-xs font-semibold text-gray-600 mb-1">Nama Pekerjaan (Lookup Master)</label><input required list="progress-jobcode-list" value={item.project} onChange={(e) => handleProgressItemChange(index, 'project', e.target.value)} placeholder="Ketik/pilih..." autoComplete="off" className="w-full border border-blue-300 bg-blue-50 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                                            <div className="w-full sm:w-1/3"><label className="block text-xs font-semibold text-gray-600 mb-1">Nilai Pengakuan (Rp)</label><input required type="text" value={formatRibuan(item.amount)} onChange={(e) => handleProgressItemChange(index, 'amount', parseRibuan(e.target.value))} className="w-full border border-gray-300 rounded-md p-2 text-sm text-right font-bold text-blue-600 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                                            {progressForm.items.length > 1 && (<div className="mt-2 sm:mt-0 pb-0.5"><button type="button" onClick={() => handleRemoveProgressItem(index)} className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-md transition border"><Icon name="Trash2" size={16} /></button></div>)}
+                                        </div>
+                                    ))}
+                                    <datalist id="progress-jobcode-list">{jobcodes.map(j => <option key={j.id} value={j.namaPekerjaan}>{j.jobcode}</option>)}</datalist>
+                                </div>
+                                <div className="mt-4 pt-3 border-t flex justify-between items-center"><span className="font-semibold text-gray-700 text-sm">Total Periode Ini:</span><span className="text-xl font-extrabold text-blue-700">{formatIDR(progressForm.items.reduce((sum, it) => sum + (Number(it.amount)||0), 0))}</span></div>
+                            </div>
+                            <div className="flex justify-end pt-4 space-x-3 border-t"><button type="button" onClick={() => setIsProgressModalOpen(false)} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition">Batal</button><button type="submit" className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 shadow-md">Simpan Progress</button></div>
+                        </form>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 5: SETTING PELANGGAN */}
+                {isSettingModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+                        <div className="flex justify-between items-center p-5 border-b"><h3 className="text-lg font-bold text-gray-800">{settingForm.id ? 'Edit' : 'Tambah'} Pelanggan</h3></div>
+                        <form onSubmit={handleSaveSetting} className="p-6 space-y-4">
+                        <div><label className="block text-sm mb-1">Nama Pelanggan / PT</label><input required type="text" value={settingForm.name} onChange={(e) => setSettingForm({...settingForm, name: e.target.value})} className="w-full border rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm mb-1">Termin Pembayaran (Hari)</label><input required type="number" value={settingForm.term} onChange={(e) => setSettingForm({...settingForm, term: e.target.value})} className="w-full border rounded-md p-2 outline-none text-right focus:ring-2 focus:ring-blue-500" /></div>
+                        <div className="flex justify-end pt-4 space-x-3"><button type="button" onClick={() => setIsSettingModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition">Batal</button><button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan Data</button></div>
+                        </form>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 6: SETTING JOBCODE */}
+                {isJobcodeModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+                        <div className="flex justify-between items-center p-5 border-b"><h3 className="text-lg font-bold text-gray-800">{jobcodeForm.id ? 'Edit' : 'Tambah'} Jobcode</h3></div>
+                        <form onSubmit={handleSaveJobcode} className="p-6 space-y-4">
+                        <div><label className="block text-sm mb-1">Jobcode</label><input required type="text" value={jobcodeForm.jobcode} onChange={(e) => setJobcodeForm({...jobcodeForm, jobcode: e.target.value})} className="w-full border rounded-md p-2 outline-none uppercase focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm mb-1">Nama Pekerjaan</label><input required type="text" value={jobcodeForm.namaPekerjaan} onChange={(e) => setJobcodeForm({...jobcodeForm, namaPekerjaan: e.target.value})} className="w-full border rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm mb-1">Pelanggan (Relasi)</label><select value={jobcodeForm.customerName} onChange={(e) => setJobcodeForm({...jobcodeForm, customerName: e.target.value})} className="w-full border rounded-md p-2 outline-none bg-white focus:ring-2 focus:ring-blue-500"><option value="">-- Multi Pelanggan --</option>{customers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
+                        <div><label className="block text-sm mb-1">Jenis Pekerjaan</label><select required value={jobcodeForm.type} onChange={(e) => setJobcodeForm({...jobcodeForm, type: e.target.value})} className="w-full border rounded-md p-2 outline-none bg-white focus:ring-2 focus:ring-blue-500"><option value="FULL PAKET">FULL PAKET</option><option value="HAULING">HAULING</option><option value="MSP/MSC">MSP/MSC</option><option value="RENTAL">RENTAL</option><option value="SPAREPART">SPAREPART</option><option value="PENJUALAN ASSET">PENJUALAN ASSET</option></select></div>
+                        <div><label className="block text-sm mb-1">Lokasi Pekerjaan</label><input required type="text" value={jobcodeForm.lokasi} onChange={(e) => setJobcodeForm({...jobcodeForm, lokasi: e.target.value})} className="w-full border rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                        <div className="flex justify-end pt-4 space-x-3"><button type="button" onClick={() => setIsJobcodeModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition">Batal</button><button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan Data</button></div>
+                        </form>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 7: BANK ACCOUNT */}
+                {isBankAccountModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+                        <div className="flex justify-between items-center p-5 border-b"><h3 className="text-lg font-bold text-gray-800">{bankAccountForm.id ? 'Edit' : 'Tambah'} Rekening Bank</h3></div>
+                        <form onSubmit={handleSaveBankAccount} className="p-6 space-y-4">
+                        <div><label className="block text-sm mb-1">Nama Bank</label><input required type="text" value={bankAccountForm.namaBank} onChange={(e) => setBankAccountForm({...bankAccountForm, namaBank: e.target.value})} className="w-full border rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm mb-1">Nomor Rekening</label><input required type="text" value={bankAccountForm.noRekening} onChange={(e) => setBankAccountForm({...bankAccountForm, noRekening: e.target.value})} className="w-full border rounded-md p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                        <div><label className="block text-sm mb-1">Atas Nama</label><input required type="text" value={bankAccountForm.atasNama} onChange={(e) => setBankAccountForm({...bankAccountForm, atasNama: e.target.value})} className="w-full border rounded-md p-2 outline-none uppercase focus:ring-2 focus:ring-blue-500" /></div>
+                        <div className="flex justify-end pt-4 space-x-3"><button type="button" onClick={() => setIsBankAccountModalOpen(false)} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition">Batal</button><button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Simpan Rekening</button></div>
+                        </form>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 8: EMAIL DRAFT */}
+                {emailModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center p-5 border-b bg-purple-50"><div className="flex items-center space-x-2 text-purple-800"><Icon name="Sparkles" size={20} /><h3 className="text-lg font-bold">✨ AI Draft Email</h3></div></div>
+                        <div className="p-6 flex-1 overflow-y-auto">
+                        {emailModal.isLoading ? (<div className="flex justify-center py-10"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600"></div></div>) : (<div className="relative group"><textarea readOnly className="w-full h-64 p-4 bg-gray-50 border rounded-lg outline-none text-sm text-gray-700 font-serif" value={emailModal.draft} /><button onClick={() => { document.execCommand('copy'); navigator.clipboard.writeText(emailModal.draft); setEmailModal(prev => ({...prev, isCopied: true})); setTimeout(() => setEmailModal(prev => ({...prev, isCopied: false})), 2000); }} className="absolute top-3 right-3 p-2 bg-white shadow-sm border rounded-md flex items-center space-x-2"><Icon name={emailModal.isCopied ? "CheckCircle2" : "Copy"} size={16} className={emailModal.isCopied ? "text-green-500" : ""} /><span className="text-xs">{emailModal.isCopied ? 'Tersalin!' : 'Salin'}</span></button></div>)}
+                        <div className="flex justify-end pt-4 mt-4 border-t"><button onClick={() => setEmailModal({ isOpen: false, data: null, draft: '' })} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Tutup</button></div>
+                        </div>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 9: AI CUSTOMER INSIGHT */}
+                {customerInsightModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center p-5 border-b bg-indigo-50"><div className="flex items-center space-x-2 text-indigo-800"><Icon name="Sparkles" size={20} /><h3 className="text-lg font-bold">✨ Analisis Risiko Klien</h3></div></div>
+                        <div className="p-6 flex-1 overflow-y-auto">
+                        {customerInsightModal.isLoading ? (<div className="flex justify-center py-10"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div></div>) : (<div className="p-4 bg-gray-50 border rounded-lg text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{customerInsightModal.insight}</div>)}
+                        <div className="flex justify-end pt-4 mt-4 border-t"><button onClick={() => setCustomerInsightModal({ isOpen: false, customerName: '', insight: '', isLoading: false })} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">Tutup</button></div>
+                        </div>
+                    </div>
+                    </div>
+                )}
+
+                {/* MODAL 10: CONFIRMATION */}
+                {confirmModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+                            <div className="flex items-center space-x-3 mb-4 text-red-600"><Icon name="AlertCircle" size={24} /><h3 className="text-lg font-bold text-gray-800">{confirmModal.title}</h3></div>
+                            <p className="text-sm text-gray-600 mb-6 leading-relaxed">{confirmModal.message}</p>
+                            <div className="flex justify-end space-x-3"><button onClick={() => setConfirmModal({isOpen: false, title: '', message: '', onConfirm: null})} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Batal</button><button onClick={() => { confirmModal.onConfirm(); setConfirmModal({isOpen: false, title: '', message: '', onConfirm: null}); }} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 shadow-sm">Ya, Lanjutkan</button></div>
+                        </div>
+                    </div>
+                )}
+
+                {/* TOAST NOTIFICATION */}
+                {toast.show && (<div className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 rounded-lg shadow-lg text-white font-medium flex items-center space-x-2 transition-all duration-300 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}><Icon name={toast.type === 'success' ? "CheckCircle2" : "AlertCircle"} size={20} /><span>{toast.message}</span></div>)}
+                </div>
+            );
+        }
+
+        // ============================================================================
+        // 5. KOMPONEN: LOGIN / PILIH DATABASE
+        // ============================================================================
+        function LoginScreen({ onSelectProfile }) {
+            const [profiles, setProfiles] = useState([]);
+            const [newProfileName, setNewProfileName] = useState('');
+            const [isCreating, setIsCreating] = useState(false);
+
+            useEffect(() => {
+                try {
+                    const data = localStorage.getItem('hri_profiles');
+                    const parsed = data ? JSON.parse(data) : [];
+                    setProfiles(Array.isArray(parsed) ? parsed : []);
+                } catch (e) {
+                    console.error("Local storage terdeteksi rusak/corrupt. Membersihkan cache...");
+                    setProfiles([]);
+                }
+            }, []);
+
+            const handleCreate = (e) => {
+                e.preventDefault();
+                if (!newProfileName.trim()) return;
+                
+                const id = 'DB_' + Date.now();
+                const newProfile = { id, name: newProfileName.trim(), createdAt: new Date().toISOString() };
+                const updated = [...profiles, newProfile];
+                
+                try {
+                    localStorage.setItem('hri_profiles', JSON.stringify(updated));
+                    setProfiles(updated);
+                } catch(err) {
+                    alert("Gagal menyimpan ke memori lokal browser Anda.");
+                }
+                
+                setNewProfileName('');
+                setIsCreating(false);
+            };
+
+            const handleDelete = (e, profileId) => {
+                e.stopPropagation(); // Mencegah klik masuk ke database
+                if (window.confirm("Yakin ingin menghapus database ini? Semua data didalamnya akan terhapus dari browser ini secara permanen.")) {
+                    const updated = profiles.filter(p => p.id !== profileId);
+                    localStorage.setItem('hri_profiles', JSON.stringify(updated));
+                    setProfiles(updated);
+                    // Hapus IndexedDB aslinya
+                    indexedDB.deleteDatabase(`HRI_DB_${profileId}`);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+                    <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-xl animate-fade-in">
+                        <div className="text-center">
+                            <div className="mx-auto h-16 w-16 bg-blue-100 text-blue-600 flex items-center justify-center rounded-full mb-4">
+                                <i className="fas fa-database text-3xl"></i>
+                            </div>
+                            <h2 className="mt-2 text-3xl font-extrabold text-gray-900">HRI Finance</h2>
+                            <p className="mt-2 text-sm text-gray-500">Pilih Ruang Kerja (Database) untuk memulai.</p>
+                        </div>
+
+                        {profiles.length > 0 ? (
+                            <div className="space-y-3 mt-8 max-h-64 overflow-y-auto pr-2">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Database Tersedia</p>
+                                {profiles.map(p => (
+                                    <div key={p.id} onClick={() => onSelectProfile(p)} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition group">
+                                        <div className="flex items-center space-x-3">
+                                            <div className="bg-gray-100 p-2 rounded-lg group-hover:bg-blue-200 group-hover:text-blue-700 transition">
+                                                <i className="fas fa-building text-lg"></i>
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-gray-800">{p.name}</h3>
+                                                <p className="text-[10px] text-gray-400">Dibuat: {formatDate(p.createdAt)}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <button onClick={(e) => handleDelete(e, p.id)} className="text-red-300 hover:text-red-600 p-2 transition opacity-0 group-hover:opacity-100" title="Hapus Database">
+                                                <i className="fas fa-trash-alt"></i>
+                                            </button>
+                                            <i className="fas fa-arrow-right text-gray-300 group-hover:text-blue-500"></i>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                <p className="text-sm text-gray-500">Belum ada database yang dibuat.</p>
+                            </div>
+                        )}
+
+                        <div className="pt-4 border-t border-gray-100">
+                            {!isCreating ? (
+                                <button onClick={() => setIsCreating(true)} className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition focus:outline-none">
+                                    <i className="fas fa-plus mr-2"></i> Buat Ruang Kerja Baru
+                                </button>
+                            ) : (
+                                <form onSubmit={handleCreate} className="space-y-4 animate-fade-in bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">Nama Perusahaan / Proyek</label>
+                                        <input autoFocus required type="text" value={newProfileName} onChange={(e) => setNewProfileName(e.target.value)} placeholder="Contoh: PT Hasil Rimba (Pusat)" className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                                    </div>
+                                    <div className="flex space-x-2">
+                                        <button type="button" onClick={() => setIsCreating(false)} className="flex-1 py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Batal</button>
+                                        <button type="submit" className="flex-1 py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Simpan</button>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============================================================================
+        // 6. KOMPONEN UTAMA (ROUTER SEDERHANA)
+        // ============================================================================
+        function AppWrapper() {
+            const [activeProfile, setActiveProfile] = useState(null);
+
+            const handleSelectProfile = async (profile) => {
+                try {
+                    await initDB(profile.id);
+                    setActiveProfile(profile);
+                } catch (err) {
+                    alert("Gagal memuat database lokal. Pastikan memori browser Anda tidak penuh atau di-block.");
+                }
+            };
+
+            const handleLogout = () => {
+                currentDbPromise = null;
+                setActiveProfile(null);
+            };
+
+            return (
+                <ErrorBoundary>
+                    {!activeProfile ? (
+                        <LoginScreen onSelectProfile={handleSelectProfile} />
+                    ) : (
+                        <MainApp profile={activeProfile} onLogout={handleLogout} />
+                    )}
+                </ErrorBoundary>
+            );
+        }
+
+        // Jalankan React setelah DOM dimuat dengan aman
+        window.onload = () => {
+            const rootElement = document.getElementById('root');
+            // Menghapus tulisan "Memuat Aplikasi..."
+            rootElement.innerHTML = '';
+            
+            try {
+                const root = ReactDOM.createRoot(rootElement);
+                root.render(<AppWrapper />);
+            } catch (err) {
+                rootElement.innerHTML = `<div style="padding:20px; color:red; font-family:sans-serif;"><b>Gagal Menjalankan React!</b><br/><br/>Pesan: ${err.message}<br/><br/>Kemungkinan file CDN terblokir oleh Firewall perusahaan Anda.</div>`;
+            }
+        };
+    </script>
+</body>
+</html>
